@@ -93,7 +93,7 @@ class RetainRunner:
                 "extension": doc["extension"],
                 "relative_path": doc["relative_path"],
                 "content_hash": current_hash,
-                "updateTime": doc.get("update_time"),
+                "updateTime": str(doc["update_time"]) if doc.get("update_time") else None,
             },
         }
 
