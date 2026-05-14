@@ -14,7 +14,7 @@ class Display:
 
     def start(self, title: str, total: int) -> None:
         self._title = title
-        self.total = total
+        self.total = total if total > 0 else None  # None 表示未知总数
         self.completed = 0
         self.failed = 0
         self._start_time = time.time()
@@ -29,6 +29,10 @@ class Display:
         icons = {"success": "✅", "skip": "⏭️ ", "error": "❌", "info": "ℹ️ "}
         icon = icons.get(status, "·")
         print(f"{icon} {message}")
+        if status == "success":
+            self.completed += 1
+        elif status == "error":
+            self.failed += 1
 
     def update_progress(self) -> None:
         self.completed += 1
@@ -42,5 +46,9 @@ class Display:
         elapsed = time.time() - self._start_time
         minutes = int(elapsed // 60)
         seconds = int(elapsed % 60)
+        total = self.completed + self.failed
         print(f"\n{self._title}完成!")
-        print(f"  总数: {self.total}  成功: {self.completed}  失败: {self.failed}  耗时: {minutes}分{seconds}秒")
+        if self.total is not None:
+            print(f"  总数: {self.total}  成功: {self.completed}  失败: {self.failed}  耗时: {minutes}分{seconds}秒")
+        else:
+            print(f"  总数: {total}  成功: {self.completed}  失败: {self.failed}  耗时: {minutes}分{seconds}秒")

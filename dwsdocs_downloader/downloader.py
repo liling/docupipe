@@ -31,18 +31,24 @@ class Downloader:
         self._output_dir = Path(output_dir)
         self._display = display or Display()
         self._converter = FileConverter()
-        self._state = StateManager(self._output_dir / ".state", "download")
+        self._current_hashes: dict[str, str] = {}  # 当前运行的 hash 缓存
+        self._state: StateManager | None = None  # 延迟初始化
 
     def download(self, space_id: str, folder_id: str | None = None, resume: bool = False) -> None:
         space_info = self._client.get_space_info(space_id)
         space_name = sanitize_filename(space_info.get("name", space_id))
         space_dir = self._output_dir / space_name
 
+        # 每个知识库有独立的状态文件
+        self._state = StateManager(space_dir / ".state", "download")
         existing_hashes = self._state.load() if resume else {}
+        self._current_hashes = dict(existing_hashes)  # 复制现有 hashes
 
         self._display.start("下载知识库", 0)
         self._walk(space_dir, space_id, folder_id, existing_hashes, resume)
         self._display.stop()
+        # 保存本次运行的 hashes
+        self._state.save(self._current_hashes)
         self._display.print_summary()
 
     def _walk(
@@ -56,7 +62,7 @@ class Downloader:
         nodes = self._client.list_nodes(workspace_id, folder_id)
         for node in nodes:
             node_id = node.get("nodeId", "")
-            title = node.get("title", "未命名")
+            title = node.get("name", "未命名")  # dws CLI 使用 "name" 而不是 "title"
             node_type = node.get("nodeType", "")
 
             if node_type == "folder":
@@ -79,19 +85,22 @@ class Downloader:
         safe_name = sanitize_filename(title)
 
         content_type = node.get("contentType", "")
-        extension = node.get("extension", "")
-        if not content_type:
-            info = self._client.get_node_info(node_id)
-            content_type = info.get("contentType", "")
-            extension = info.get("extension", "")
+        extension = node.get("extension", "")  # 可能是空字符串
 
         try:
-            if content_type == "ALIDOC" and extension == "adoc":
+            # ALIDOC 类型的在线文档使用 doc read 获取 markdown
+            # 其他类型（pptx, xlsx, pdf 等）使用下载+转换方式
+            if content_type == "ALIDOC" or extension == "adoc":
                 markdown = self._client.read_document(node_id)
             else:
-                markdown = self._download_and_convert(node_id, extension)
+                # 下载文件并转换为 markdown
+                ext = extension if extension else "bin"
+                markdown = self._download_and_convert(node_id, ext)
 
-            self._save_document(parent_dir, safe_name, node_id, markdown, content_type, extension)
+            md_path = self._save_document(parent_dir, safe_name, node_id, markdown, content_type, extension)
+            # 保存 hash 到 state
+            file_hash = content_hash(md_path)
+            self._current_hashes[node_id] = file_hash
             self._display.result("success", f"{safe_name}")
         except Exception as e:
             self._display.result("error", f"{safe_name}: {e}")
@@ -121,7 +130,7 @@ class Downloader:
         markdown: str,
         content_type: str,
         extension: str,
-    ) -> None:
+    ) -> Path:
         parent_dir.mkdir(parents=True, exist_ok=True)
         md_path = parent_dir / f"{safe_name}.md"
         md_path.write_text(markdown, encoding="utf-8")
@@ -134,3 +143,4 @@ class Downloader:
         }
         meta_path = parent_dir / f"{safe_name}.meta.json"
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        return md_path

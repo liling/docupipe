@@ -10,9 +10,9 @@ from dwsdocs_downloader.wiki_client import WikiClient
 
 def _mock_run(stdout: str, returncode: int = 0):
     result = MagicMock()
-    result.stdout = stdout
+    result.stdout = stdout.encode("utf-8")  # 实际 subprocess 返回 bytes
     result.returncode = returncode
-    result.stderr = ""
+    result.stderr = b""
     return result
 
 
@@ -23,11 +23,11 @@ def client():
 
 def test_list_nodes(client):
     nodes = [
-        {"nodeId": "abc123", "title": "文档1", "nodeType": "doc"},
-        {"nodeId": "def456", "title": "文件夹", "nodeType": "folder"},
+        {"nodeId": "abc123", "name": "文档1", "nodeType": "doc"},
+        {"nodeId": "def456", "name": "文件夹", "nodeType": "folder"},
     ]
     with patch("dwsdocs_downloader.wiki_client.subprocess.run") as mock_run:
-        mock_run.return_value = _mock_run(json.dumps({"items": nodes}))
+        mock_run.return_value = _mock_run(json.dumps({"nodes": nodes}))
         result = client.list_nodes(workspace_id="space1")
         assert len(result) == 2
         assert result[0]["nodeId"] == "abc123"
@@ -40,7 +40,7 @@ def test_list_nodes(client):
 
 def test_list_nodes_with_folder(client):
     with patch("dwsdocs_downloader.wiki_client.subprocess.run") as mock_run:
-        mock_run.return_value = _mock_run(json.dumps({"items": []}))
+        mock_run.return_value = _mock_run(json.dumps({"nodes": []}))
         client.list_nodes(workspace_id="space1", folder_id="folder1")
         cmd = mock_run.call_args[0][0]
         assert "--folder" in cmd
@@ -48,8 +48,8 @@ def test_list_nodes_with_folder(client):
 
 
 def test_list_nodes_pagination(client):
-    page1 = {"items": [{"nodeId": "a"}], "nextPageToken": "tok1"}
-    page2 = {"items": [{"nodeId": "b"}]}
+    page1 = {"nodes": [{"nodeId": "a"}], "nextPageToken": "tok1"}
+    page2 = {"nodes": [{"nodeId": "b"}]}
     with patch("dwsdocs_downloader.wiki_client.subprocess.run") as mock_run:
         mock_run.side_effect = [
             _mock_run(json.dumps(page1)),
@@ -70,9 +70,10 @@ def test_get_node_info(client):
 
 def test_read_document(client):
     with patch("dwsdocs_downloader.wiki_client.subprocess.run") as mock_run:
-        mock_run.return_value = _mock_run(json.dumps({"result": [{"type": "markdown", "content": "# Hello"}]}))
+        mock_run.return_value = _mock_run(json.dumps({"markdown": "# Hello\n\nWorld"}))
         result = client.read_document("abc")
-        assert "Hello" in result
+        assert "# Hello" in result
+        assert "World" in result
 
 
 def test_download_file(client):
