@@ -64,18 +64,17 @@ class RetainRunner:
 
         # 可配置的 context
         if context_prefix:
-            # 使用自定义 context，不再追加其他信息
+            # 使用自定义 context
             context = context_prefix
         else:
-            # 默认 context
-            folder_display = " / ".join(folder_parts[1:]) if len(folder_parts) > 1 else ""
-            context_parts = ["钉钉知识库文档"]
-            if space_name:
-                context_parts.append(f"知识库: {space_name}")
+            # 默认 context 格式：钉钉知识库文档：标题，来自 知识库名/路径
+            folder_display = "/".join(folder_parts[1:]) if len(folder_parts) > 1 else ""
             if folder_display:
-                context_parts.append(f"路径: {folder_display}")
-            context_parts.append(doc["title"])
-            context = "，".join(context_parts)
+                context = f"钉钉知识库文档：{doc['title']}，来自 {space_name}/{folder_display} 知识库"
+            elif space_name:
+                context = f"钉钉知识库文档：{doc['title']}，来自 {space_name} 知识库"
+            else:
+                context = f"钉钉知识库文档：{doc['title']}"
 
         return {
             "content": md_content,
