@@ -4,6 +4,10 @@ import os
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
+
+# 自动加载 .env 文件
+load_dotenv()
 
 
 @click.group()
