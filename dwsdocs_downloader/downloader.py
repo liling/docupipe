@@ -86,6 +86,7 @@ class Downloader:
 
         content_type = node.get("contentType", "")
         extension = node.get("extension", "")  # 可能是空字符串
+        update_time = node.get("updateTime")  # Unix 毫秒时间戳
 
         try:
             # ALIDOC 类型的在线文档使用 doc read 获取 markdown
@@ -97,7 +98,9 @@ class Downloader:
                 ext = extension if extension else "bin"
                 markdown = self._download_and_convert(node_id, ext)
 
-            md_path = self._save_document(parent_dir, safe_name, node_id, markdown, content_type, extension)
+            md_path = self._save_document(
+                parent_dir, safe_name, node_id, markdown, content_type, extension, update_time
+            )
             # 保存 hash 到 state
             file_hash = content_hash(md_path)
             self._current_hashes[node_id] = file_hash
@@ -130,6 +133,7 @@ class Downloader:
         markdown: str,
         content_type: str,
         extension: str,
+        update_time: int | None = None,
     ) -> Path:
         parent_dir.mkdir(parents=True, exist_ok=True)
         md_path = parent_dir / f"{safe_name}.md"
@@ -140,6 +144,7 @@ class Downloader:
             "title": safe_name,
             "contentType": content_type,
             "extension": extension,
+            "updateTime": update_time,
         }
         meta_path = parent_dir / f"{safe_name}.meta.json"
         meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")

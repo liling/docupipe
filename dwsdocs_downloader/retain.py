@@ -32,6 +32,7 @@ class RetainRunner:
                     "title": meta.get("title", ""),
                     "content_type": meta.get("contentType", ""),
                     "extension": meta.get("extension", ""),
+                    "update_time": meta.get("updateTime"),  # Unix 毫秒时间戳
                     "md_path": md_path,
                     "relative_path": str(relative),
                     "folder_parts": relative.parts[:-1],
@@ -76,10 +77,13 @@ class RetainRunner:
             else:
                 context = f"钉钉知识库文档：{doc['title']}"
 
+        # 使用文档的最后修改时间，如果没有则用当前时间
+        timestamp = self._format_timestamp(doc.get("update_time"))
+
         return {
             "content": md_content,
             "document_id": f"dingtalk:wiki:{doc['node_id']}",
-            "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00"),
+            "timestamp": timestamp,
             "context": context,
             "tags": tags,
             "metadata": {
@@ -89,8 +93,18 @@ class RetainRunner:
                 "extension": doc["extension"],
                 "relative_path": doc["relative_path"],
                 "content_hash": current_hash,
+                "updateTime": doc.get("update_time"),
             },
         }
+
+    def _format_timestamp(self, update_time: int | None) -> str:
+        """将 Unix 毫秒时间戳转换为 ISO 格式"""
+        if update_time:
+            from datetime import timezone, timedelta
+            tz = timezone(timedelta(hours=8))  # 北京时间
+            dt = datetime.fromtimestamp(update_time / 1000, tz=tz)
+            return dt.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+        return datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
     def run(
         self,
