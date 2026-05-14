@@ -60,7 +60,8 @@ class RetainRunner:
 
         folder_parts = doc.get("folder_parts", ())
         space_name = folder_parts[0] if folder_parts else ""
-        path_tags = [f"path:{part}" for part in folder_parts]
+        # path 只从第二项开始，避免与 space 重复
+        path_tags = [f"path:{part}" for part in folder_parts[1:]]
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # 可配置的 context
