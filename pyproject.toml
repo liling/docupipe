@@ -5,7 +5,7 @@ description = "钉钉知识库内容下载并同步到 Hindsight"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1.0",
-    "markitdown[all]>=0.1.0",
+    "markitdown>=0.1.0",
     "hindsight-client>=0.1.0",
     "tqdm>=4.66.0",
 ]
