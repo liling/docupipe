@@ -61,7 +61,7 @@ class RetainRunner:
         folder_parts = doc.get("folder_parts", ())
         space_name = folder_parts[0] if folder_parts else ""
         path_tags = [f"path:{part}" for part in folder_parts]
-        tags = ["dingtalk", "wiki"] + ([f"space:{space_name}"] if space_name else []) + path_tags
+        tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # 可配置的 context
         if context_prefix:

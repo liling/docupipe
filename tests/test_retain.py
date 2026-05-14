@@ -78,8 +78,8 @@ def test_build_retain_item(output_dir, display):
     item = runner.build_retain_item(docs[0])
 
     assert item["document_id"] == "dingtalk:wiki:n1"
-    assert "dingtalk" in item["tags"]
-    assert "wiki" in item["tags"]
+    assert "space:知识库" in item["tags"]
+    assert "path:子目录" in item["tags"]
     assert item["metadata"]["nodeId"] == "n1"
     assert "# 测试" in item["content"]
 
