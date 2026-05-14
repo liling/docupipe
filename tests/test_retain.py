@@ -77,7 +77,8 @@ def test_build_retain_item(output_dir, display):
     docs = runner.scan_documents()
     item = runner.build_retain_item(docs[0])
 
-    assert item["document_id"] == "wiki:n1"
+    assert item["document_id"] == "dingtalk:wiki:n1"
+    assert "dingtalk" in item["tags"]
     assert "wiki" in item["tags"]
     assert item["metadata"]["nodeId"] == "n1"
     assert "# 测试" in item["content"]
@@ -92,3 +93,15 @@ def test_build_retain_item_context(output_dir, display):
 
     assert "技术文档" in item["context"]
     assert "部署指南" in item["context"]
+
+
+def test_build_retain_item_custom_context(output_dir, display):
+    _create_doc(output_dir, "知识库", "", "文档1", "n1", "# 测试")
+
+    runner = RetainRunner(output_dir, display=display)
+    docs = runner.scan_documents()
+    item = runner.build_retain_item(docs[0], context_prefix="自定义上下文")
+
+    # 自定义 context 完全替换默认 context
+    assert item["context"] == "自定义上下文"
+    assert "知识库" not in item["context"]

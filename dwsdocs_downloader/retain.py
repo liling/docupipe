@@ -53,27 +53,33 @@ class RetainRunner:
                 changed.append(doc)
         return changed, skipped
 
-    def build_retain_item(self, doc: dict) -> dict:
+    def build_retain_item(self, doc: dict, context_prefix: str | None = None) -> dict:
         md_content = doc["md_path"].read_text(encoding="utf-8")
         current_hash = content_hash(doc["md_path"])
 
         folder_parts = doc.get("folder_parts", ())
         space_name = folder_parts[0] if folder_parts else ""
         path_tags = [f"path:{part}" for part in folder_parts]
-        tags = ["wiki"] + ([f"space:{space_name}"] if space_name else []) + path_tags
+        tags = ["dingtalk", "wiki"] + ([f"space:{space_name}"] if space_name else []) + path_tags
 
-        folder_display = " / ".join(folder_parts[1:]) if len(folder_parts) > 1 else ""
-        context_parts = ["钉钉知识库文档"]
-        if space_name:
-            context_parts.append(f"知识库: {space_name}")
-        if folder_display:
-            context_parts.append(f"路径: {folder_display}")
-        context_parts.append(doc["title"])
-        context = "，".join(context_parts)
+        # 可配置的 context
+        if context_prefix:
+            # 使用自定义 context，不再追加其他信息
+            context = context_prefix
+        else:
+            # 默认 context
+            folder_display = " / ".join(folder_parts[1:]) if len(folder_parts) > 1 else ""
+            context_parts = ["钉钉知识库文档"]
+            if space_name:
+                context_parts.append(f"知识库: {space_name}")
+            if folder_display:
+                context_parts.append(f"路径: {folder_display}")
+            context_parts.append(doc["title"])
+            context = "，".join(context_parts)
 
         return {
             "content": md_content,
-            "document_id": f"wiki:{doc['node_id']}",
+            "document_id": f"dingtalk:wiki:{doc['node_id']}",
             "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00"),
             "context": context,
             "tags": tags,
@@ -94,6 +100,7 @@ class RetainRunner:
         resume: bool = False,
         sync: bool = False,
         dry_run: bool = False,
+        context_prefix: str | None = None,
     ) -> None:
         if sync:
             docs, skipped = self.scan_documents_sync()
@@ -116,7 +123,7 @@ class RetainRunner:
         for doc in docs:
             title = doc["title"]
             try:
-                item = self.build_retain_item(doc)
+                item = self.build_retain_item(doc, context_prefix=context_prefix)
                 if dry_run:
                     self._display.result("info", f"[dry-run] {title} tags={item['tags']}")
                 else:
