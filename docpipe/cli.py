@@ -33,9 +33,18 @@ def main(ctx, state_dir):
 @click.option("--hindsight-url", default=None, help="Hindsight API URL")
 @click.option("--hindsight-key", default=None, help="Hindsight API Key")
 @click.option("--context", default=None, help="Hindsight context 前缀")
+@click.option("--enable-image-description", is_flag=True, default=False,
+              help="启用图片描述生成")
+@click.option("--image-api-key", default=None, envvar="IMAGE_DESCRIPTION_API_KEY",
+              help="图片描述 API Key")
+@click.option("--image-base-url", default=None, envvar="IMAGE_DESCRIPTION_BASE_URL",
+              help="图片描述 API Base URL")
+@click.option("--image-model", default="gpt-4o", envvar="IMAGE_DESCRIPTION_MODEL",
+              help="图片描述模型名称")
 @click.pass_context
 def run(ctx, source_name, dest_name, config_path, pipeline_name, resume, sync_mode, dry_run,
-        space, folder, input_dir, bank_id, hindsight_url, hindsight_key, context):
+        space, folder, input_dir, bank_id, hindsight_url, hindsight_key, context,
+        enable_image_description, image_api_key, image_base_url, image_model):
     """运行文档传输 pipeline"""
     if config_path:
         _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run)
@@ -43,14 +52,14 @@ def run(ctx, source_name, dest_name, config_path, pipeline_name, resume, sync_mo
         _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run,
                      space=space, folder=folder, input_dir=input_dir,
                      bank_id=bank_id, hindsight_url=hindsight_url,
-                     hindsight_key=hindsight_key, context=context)
+                     hindsight_key=hindsight_key, context=context,
+                     image_description=enable_image_description,
+                     image_description_api_key=image_api_key,
+                     image_description_base_url=image_base_url,
+                     image_description_model=image_model)
     else:
         click.echo("错误：需要 --source/--dest 或 --config")
         raise SystemExit(1)
-        _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run,
-                     space=space, folder=folder, input_dir=input_dir,
-                     bank_id=bank_id, hindsight_url=hindsight_url,
-                     hindsight_key=hindsight_key, context=context)
 
 
 def _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run, **kwargs):
@@ -125,6 +134,11 @@ def _extract_source_config(source_name, kwargs):
             config["space_id"] = kwargs["space"]
         if kwargs.get("folder"):
             config["folder_id"] = kwargs["folder"]
+        if kwargs.get("image_description"):
+            config["image_description"] = True
+            config["image_description_api_key"] = kwargs.get("image_description_api_key", "")
+            config["image_description_base_url"] = kwargs.get("image_description_base_url", "")
+            config["image_description_model"] = kwargs.get("image_description_model", "gpt-4o")
     elif source_name == "local":
         if kwargs.get("input_dir"):
             config["input_dir"] = kwargs["input_dir"]

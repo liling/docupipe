@@ -258,3 +258,32 @@ class TestEnvironmentVariableDefaults:
 
         assert source._image_processor is not None
         assert source._image_processor.vision_client.model == "env-model"
+
+
+class TestCLIImageDescription:
+    def test_extract_source_config_passes_image_description(self):
+        from docpipe.cli import _extract_source_config
+
+        kwargs = {
+            "space": "test-space",
+            "image_description": True,
+            "image_description_api_key": "sk-test",
+            "image_description_base_url": "https://api.example.com/v1",
+            "image_description_model": "gpt-4o",
+        }
+        config = _extract_source_config("dingtalk", kwargs)
+
+        assert config["space_id"] == "test-space"
+        assert config["image_description"] is True
+        assert config["image_description_api_key"] == "sk-test"
+        assert config["image_description_base_url"] == "https://api.example.com/v1"
+        assert config["image_description_model"] == "gpt-4o"
+
+    def test_extract_source_config_without_image_description(self):
+        from docpipe.cli import _extract_source_config
+
+        kwargs = {"space": "test-space"}
+        config = _extract_source_config("dingtalk", kwargs)
+
+        assert config["space_id"] == "test-space"
+        assert "image_description" not in config
