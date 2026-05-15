@@ -100,11 +100,14 @@ class Pipeline:
             # 类型规则过滤
             if self._type_resolver:
                 converter_name = self._resolve_type(doc_meta)
+                ext_info = doc_meta.extra.get("extension", "") or ""
+                type_info = doc_meta.extra.get("contentType", "") or ""
+                type_label = f".{ext_info}" if ext_info else type_info or "未知类型"
                 if converter_name is None:
-                    self._display.result("skip", f"{doc_meta.path} (无处理规则)")
+                    self._display.result("skip", f"{doc_meta.path} [无处理规则: {type_label}]")
                     continue
                 if converter_name == "skip":
-                    self._display.result("skip", f"{doc_meta.path} (跳过)")
+                    self._display.result("skip", f"{doc_meta.path} [跳过: {type_label}]")
                     continue
                 if converter_name == "source":
                     converter_name = None
