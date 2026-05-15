@@ -88,6 +88,7 @@ class Pipeline:
                 self._display.result("skip", f"{doc_meta.title} (无变化)")
                 continue
 
+            self._display.set_current(doc_meta.title)
             try:
                 doc = self.source.fetch(doc_meta)
                 if not doc.meta.hash:
@@ -106,6 +107,8 @@ class Pipeline:
                 logger.error("文档处理失败: %s - %s", doc_meta.title, e)
                 self._display.result("error", f"{doc_meta.title}: {e}")
                 self._display.add_failure()
+            finally:
+                self._display.clear_current(doc_meta.title)
 
         if sync:
             removed = self.state.find_removed([d.id for d in docs])
