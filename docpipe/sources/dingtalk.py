@@ -29,7 +29,7 @@ class _WikiClient:
             return {}
         return json.loads(stdout)
 
-    def list_nodes(self, workspace_id: str, folder_id: str | None = None) -> list[dict]:
+    def list_nodes(self, workspace_id: str, folder_id: str | None = None, folder_name: str = "") -> list[dict]:
         all_items: list[dict] = []
         page_token: str | None = None
         page_count = 0
@@ -47,8 +47,8 @@ class _WikiClient:
             page_token = data.get("nextPageToken") if isinstance(data, dict) else None
             if not page_token:
                 break
-        logger.info("列出节点完成: 工作区=%s, 文件夹=%s, 共 %d 页, %d 个节点",
-                     workspace_id, folder_id or "(根)", page_count, len(all_items))
+        logger.info("列出节点完成: %s/%s, 共 %d 页, %d 个节点",
+                     workspace_id, folder_name or "(根)", page_count, len(all_items))
         return all_items
 
     def read_document(self, node_id: str) -> str:
@@ -185,7 +185,7 @@ class DingtalkSource(SourceBase):
     def _collect_nodes(self, space_id: str, folder_id: str | None, parent_path: str = "") -> list[dict]:
         folder_label = parent_path or "(根)"
         logger.debug("收集节点: %s/%s", self._space_name, folder_label)
-        nodes = self._client.list_nodes(space_id, folder_id)
+        nodes = self._client.list_nodes(space_id, folder_id, folder_name=folder_label)
         result = []
         folder_count = 0
         doc_count = 0
