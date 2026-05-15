@@ -1,11 +1,40 @@
+type_rules:
+  extensions:
+    ".pdf": markitdown
+    ".docx": markitdown
+    ".xlsx": markitdown
+    ".pptx": markitdown
+    ".doc": markitdown
+    ".xls": markitdown
+    ".ppt": markitdown
+    ".html": markitdown
+    ".htm": markitdown
+    ".csv": markitdown
+    ".json": markitdown
+    ".xml": markitdown
+    ".txt": markitdown
+    ".md": markitdown
+    ".rtf": markitdown
+    ".odt": markitdown
+    ".ods": markitdown
+  mime_types: {}
+
 pipelines:
-  - name: wiki-to-hindsight
+
+  - name: shujuxian-to-hindsight
     source: dingtalk
     destination: hindsight
     source_config:
-      space_id: "a0gX1Pr33xZKqzeJ"
+      space_id: "nb9XJB7qpnkxQXyA"
+      image_description: true
+      image_description_base_url: "http://172.16.4.197:8002/v1"
+      image_description_api_key: "sk-MTc3MzY0ODE4NDc4NdJiiX-Lt6vvfVMtMVR38-4e6BDBmdTg_ixoQGQQCfwV"
+      image_description_model: "qwen3.5-flash"
     dest_config:
-      context_prefix: "钉钉知识库文档"
+      api_url: "http://127.0.0.1:8888"
+      api_key: "hsm_USLTwNV2CzyuOoaSebz2jiZpIrD91tj2lGvkmPWW6Vk"
+      bank_id: "docpipe"
+      context_prefix: "数据线知识库文档"
     options:
       resume: true
       sync: true

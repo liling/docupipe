@@ -102,12 +102,20 @@ def _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run, **kwarg
 def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
     import yaml
 
+    from docpipe.converters.resolver import TypeRuleResolver
     from docpipe.destinations import get_destination
     from docpipe.display import Display
     from docpipe.pipeline import Pipeline
     from docpipe.sources import get_source
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+
+    type_rules = config.get("type_rules", {})
+    resolver = TypeRuleResolver(
+        extension_rules=type_rules.get("extensions", {}),
+        mime_rules=type_rules.get("mime_types", {}),
+    )
+
     pipelines = config.get("pipelines", [])
 
     if pipeline_name:
@@ -130,7 +138,8 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
         dest = dest_cls(**dest_config)
 
         try:
-            pipeline = Pipeline(source, dest, ctx.obj["state_dir"], display=Display())
+            pipeline = Pipeline(source, dest, ctx.obj["state_dir"],
+                                display=Display(), type_resolver=resolver)
             pipeline.run(
                 resume=resume or options.get("resume", False),
                 sync=sync_mode or options.get("sync", False),
