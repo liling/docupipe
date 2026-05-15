@@ -97,7 +97,7 @@ class Display:
             else:
                 # error: 不计数不推进，由 add_failure() 负责；info: 仅显示
                 pass
-            self._print(text)
+        self._print(text)
 
     def add_failure(self) -> None:
         with self._lock:
