@@ -39,8 +39,7 @@ class HindsightDestination(DestinationBase):
         return item["document_id"]
 
     def remove(self, doc_id: str) -> None:
-        client = self._get_client()
-        client.forget_batch(self.bank_id, document_ids=[doc_id])
+        raise NotImplementedError("Hindsight 不支持删除文档")
 
     def close(self) -> None:
         if self._client is not None:

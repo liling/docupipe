@@ -1,0 +1,11 @@
+pipelines:
+  - name: wiki-to-hindsight
+    source: dingtalk
+    destination: hindsight
+    source_config:
+      space_id: "a0gX1Pr33xZKqzeJ"
+    dest_config:
+      context_prefix: "钉钉知识库文档"
+    options:
+      resume: true
+      sync: true

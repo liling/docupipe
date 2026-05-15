@@ -19,8 +19,8 @@ def main(ctx, state_dir):
 
 
 @main.command()
-@click.option("--source", "source_name", required=True, help="Source 名称")
-@click.option("--dest", "dest_name", required=True, help="Destination 名称")
+@click.option("--source", "source_name", default=None, help="Source 名称")
+@click.option("--dest", "dest_name", default=None, help="Destination 名称")
 @click.option("--config", "config_path", default=None, help="配置文件路径")
 @click.option("--pipeline", "pipeline_name", default=None, help="配置文件中的 pipeline 名称")
 @click.option("--resume", is_flag=True, default=False, help="跳过已处理的文档")
@@ -39,7 +39,14 @@ def run(ctx, source_name, dest_name, config_path, pipeline_name, resume, sync_mo
     """运行文档传输 pipeline"""
     if config_path:
         _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run)
+    elif source_name and dest_name:
+        _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run,
+                     space=space, folder=folder, input_dir=input_dir,
+                     bank_id=bank_id, hindsight_url=hindsight_url,
+                     hindsight_key=hindsight_key, context=context)
     else:
+        click.echo("错误：需要 --source/--dest 或 --config")
+        raise SystemExit(1)
         _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run,
                      space=space, folder=folder, input_dir=input_dir,
                      bank_id=bank_id, hindsight_url=hindsight_url,
