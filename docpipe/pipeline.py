@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 from docpipe.destinations.base import DestinationBase
 from docpipe.display import Display
 from docpipe.sources.base import SourceBase
+
+logger = logging.getLogger(__name__)
 
 
 class StateManager:
@@ -70,7 +73,10 @@ class Pipeline:
         self._display = display or Display()
 
     def run(self, *, resume: bool = False, sync: bool = False, dry_run: bool = False) -> None:
+        logger.info("Pipeline 开始: %s → %s (resume=%s, sync=%s, dry_run=%s)",
+                     self.source.name, self.dest.name, resume, sync, dry_run)
         docs = self.source.list_documents()
+        logger.info("待处理文档: %d 个", len(docs))
 
         if resume:
             docs = [d for d in docs if not self.state.is_processed(d.id)]
@@ -97,6 +103,7 @@ class Pipeline:
 
                 self.state.mark_done(doc_meta.id, doc.meta.hash)
             except Exception as e:
+                logger.error("文档处理失败: %s - %s", doc_meta.title, e)
                 self._display.result("error", f"{doc_meta.title}: {e}")
                 self._display.add_failure()
 
@@ -115,3 +122,4 @@ class Pipeline:
 
         self._display.stop()
         self._display.print_summary()
+        logger.info("Pipeline 完成: %s → %s", self.source.name, self.dest.name)

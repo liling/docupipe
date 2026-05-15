@@ -82,9 +82,17 @@ class ImagePostProcessor:
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
         def replace_image(match: re.Match) -> str:
-            url = match.group(2)
+            url = match.group(2).strip().strip('"').strip("'")
 
             if url.startswith("image://"):
+                return match.group(0)
+
+            # 跳过 data: URI（已内联，无需下载）
+            if url.startswith("data:"):
+                return match.group(0)
+
+            # 跳过相对路径（没有 scheme，无法下载）
+            if "://" not in url:
                 return match.group(0)
 
             try:

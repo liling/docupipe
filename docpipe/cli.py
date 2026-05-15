@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -9,11 +10,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _setup_logging(level: str):
+    """配置根日志级别"""
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=numeric_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
 @click.group()
 @click.option("--state-dir", default="./.state", help="状态文件目录")
+@click.option("--log-level", default="INFO", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
+              help="日志级别")
 @click.pass_context
-def main(ctx, state_dir):
+def main(ctx, state_dir, log_level):
     """通用文档传输 pipeline"""
+    _setup_logging(log_level)
     ctx.ensure_object(dict)
     ctx.obj["state_dir"] = Path(state_dir)
 
