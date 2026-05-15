@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -14,14 +13,6 @@ from docpipe.models import Document, DocumentMeta
 logger = logging.getLogger(__name__)
 from docpipe.sources import register_source
 from docpipe.sources.base import SourceBase
-
-_CONVERTIBLE_EXTENSIONS = {
-    ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
-    ".html", ".htm", ".csv", ".json", ".xml", ".txt", ".md",
-    ".rtf", ".odt", ".ods",
-}
-
-_SKIP_CONTENT_TYPES = {"AXLS", "AMINDMAP", "AFORM"}
 
 
 class _WikiClient:
@@ -105,26 +96,10 @@ class DingtalkSource(SourceBase):
         logger.info("列出文档: space_id=%s, folder_id=%s", self._space_id, self._folder_id or "(根目录)")
         nodes = self._collect_nodes(self._space_id, self._folder_id)
         result = []
-        skipped_count = 0
         for node in nodes:
             node_type = node.get("nodeType", "")
             if node_type == "folder":
                 continue
-            content_type = node.get("contentType", "")
-            extension = node.get("extension", "")
-            # 跳过钉钉表格、思维导图、表单等无法处理的类型
-            if content_type in _SKIP_CONTENT_TYPES or extension in ("axls", "amindmap"):
-                logger.debug("跳过不支持的类型: %s (contentType=%s, extension=%s)",
-                             node.get("name", "未命名"), content_type, extension)
-                skipped_count += 1
-                continue
-            # 非钉钉原生文档，必须扩展名在可转换白名单中才处理
-            if content_type != "ALIDOC" and extension != "adoc":
-                ext_lower = f".{extension}" if extension else ""
-                if ext_lower not in _CONVERTIBLE_EXTENSIONS:
-                    logger.debug("跳过不可转换的文件: %s (extension=%s)", node.get("name", "未命名"), extension or "(无)")
-                    skipped_count += 1
-                    continue
             node_id = node.get("nodeId", "")
             title = node.get("name", "未命名")
             result.append(DocumentMeta(
@@ -133,13 +108,13 @@ class DingtalkSource(SourceBase):
                 path=node.get("_path", ""),
                 hash="",
                 extra={
-                    "contentType": content_type,
-                    "extension": extension,
+                    "contentType": node.get("contentType", ""),
+                    "extension": node.get("extension", ""),
                     "updateTime": node.get("updateTime"),
                     "nodeType": node_type,
                 },
             ))
-        logger.info("列出文档完成: 共 %d 个文档, 跳过 %d 个", len(result), skipped_count)
+        logger.info("列出文档完成: 共 %d 个文档", len(result))
         return result
 
     def fetch(self, doc_meta: DocumentMeta) -> Document:
@@ -149,30 +124,31 @@ class DingtalkSource(SourceBase):
 
         logger.info("获取文档: id=%s, title=%s, type=%s", doc_meta.id, doc_meta.title, content_type)
 
+        extra = dict(doc_meta.extra)
+
         if content_type == "ALIDOC" or extension == "adoc":
             markdown = self._client.read_document(node_id)
+            markdown = self._clean_html_tags(markdown)
         else:
-            ext = extension if extension else "bin"
-            markdown = self._download_and_convert(node_id, ext)
+            tmp_path = self._download_to_temp(node_id, extension)
+            extra["_temp_file"] = str(tmp_path)
+            extra["_needs_conversion"] = True
+            markdown = ""
 
-        markdown = self._clean_html_tags(markdown)
-
-        if self._image_processor:
+        if markdown and self._image_processor:
             source_context = f"{doc_meta.title} - {doc_meta.path}"
             logger.debug("处理文档中的图片: %s", doc_meta.title)
             markdown, image_metadata = self._image_processor.process(markdown, source_context)
-            doc_meta.extra["image_metadata"] = image_metadata
+            extra["image_metadata"] = image_metadata
             logger.info("图片处理完成: %s, 处理了 %d 张图片", doc_meta.title, len(image_metadata) if image_metadata else 0)
 
-        content_hash = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        logger.debug("文档获取完成: id=%s, 内容长度=%d, hash=%s...", doc_meta.id, len(markdown), content_hash[:12])
         return Document(
             meta=DocumentMeta(
                 id=doc_meta.id,
                 title=doc_meta.title,
                 path=doc_meta.path,
-                hash=content_hash,
-                extra=doc_meta.extra,
+                hash="",
+                extra=extra,
             ),
             content=markdown,
             content_type="markdown",
@@ -201,8 +177,8 @@ class DingtalkSource(SourceBase):
         logger.debug("收集节点完成: 文件夹=%d, 文档=%d", folder_count, doc_count)
         return result
 
-    def _download_and_convert(self, node_id: str, extension: str) -> str:
-        logger.debug("下载并转换文件: node_id=%s, extension=%s", node_id, extension)
+    def _download_to_temp(self, node_id: str, extension: str) -> Path:
+        logger.debug("下载文件: node_id=%s, extension=%s", node_id, extension)
         download_url = self._client.download_file(node_id)
         resp = requests.get(download_url, timeout=120)
         resp.raise_for_status()
@@ -211,16 +187,7 @@ class DingtalkSource(SourceBase):
         suffix = f".{extension}" if extension else ".bin"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(resp.content)
-            tmp_path = Path(tmp.name)
-
-        try:
-            from markitdown import MarkItDown
-            md = MarkItDown()
-            result = md.convert(str(tmp_path))
-            logger.debug("文件转换完成: node_id=%s, Markdown 长度=%d", node_id, len(result.markdown))
-            return result.markdown
-        finally:
-            tmp_path.unlink(missing_ok=True)
+            return Path(tmp.name)
 
     @staticmethod
     def _clean_html_tags(markdown: str) -> str:
