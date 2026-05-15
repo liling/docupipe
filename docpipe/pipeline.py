@@ -66,11 +66,19 @@ class Pipeline:
         dest: DestinationBase,
         state_dir: Path,
         display: Display | None = None,
+        type_resolver=None,
     ):
         self.source = source
         self.dest = dest
         self.state = StateManager(state_dir / f"{source.name}_{dest.name}_state.json")
         self._display = display or Display()
+        self._type_resolver = type_resolver
+
+    def _resolve_type(self, doc_meta):
+        ext_raw = doc_meta.extra.get("extension", "")
+        extension = f".{ext_raw}" if ext_raw else ""
+        mime_type = doc_meta.extra.get("contentType", "")
+        return self._type_resolver.resolve(extension, mime_type)
 
     def run(self, *, resume: bool = False, sync: bool = False, dry_run: bool = False) -> None:
         logger.info("Pipeline 开始: %s → %s (resume=%s, sync=%s, dry_run=%s)",
@@ -85,43 +93,68 @@ class Pipeline:
 
         for doc_meta in docs:
             if sync and self.state.is_unchanged(doc_meta.id, doc_meta.hash):
-                self._display.result("skip", f"{doc_meta.title} (无变化)")
+                self._display.result("skip", f"{doc_meta.path} (无变化)")
                 continue
 
-            self._display.set_current(doc_meta.title)
+            # 类型规则过滤
+            if self._type_resolver:
+                converter_name = self._resolve_type(doc_meta)
+                if converter_name is None:
+                    self._display.result("skip", f"{doc_meta.path} (无处理规则)")
+                    continue
+                if converter_name == "skip":
+                    self._display.result("skip", f"{doc_meta.path} (跳过)")
+                    continue
+            else:
+                converter_name = None
+
+            self._display.set_current(doc_meta.path)
             try:
                 doc = self.source.fetch(doc_meta)
+
+                # 转换：如果 Source 标记需要转换，调用 converter
+                if doc.meta.extra.get("_needs_conversion") and converter_name:
+                    from docpipe.converters import get_converter
+                    converter_cls = get_converter(converter_name)
+                    converter = converter_cls()
+                    file_path = Path(doc.meta.extra["_temp_file"])
+                    try:
+                        doc.content = converter.convert(file_path)
+                    finally:
+                        file_path.unlink(missing_ok=True)
+
                 if not doc.meta.hash:
                     doc.meta.hash = content_hash(doc.content)
-                # 标记来源
                 doc.meta.extra["_source"] = self.source.name
 
                 if dry_run:
-                    self._display.result("info", f"[dry-run] {doc_meta.title}")
+                    self._display.result("info", f"[dry-run] {doc_meta.path}")
                 else:
                     self.dest.write(doc)
-                    self._display.result("success", doc_meta.title)
+                    self._display.result("success", doc_meta.path)
 
                 self.state.mark_done(doc_meta.id, doc.meta.hash)
             except Exception as e:
-                logger.error("文档处理失败: %s - %s", doc_meta.title, e)
-                self._display.result("error", f"{doc_meta.title}: {e}")
+                logger.error("文档处理失败: %s - %s", doc_meta.path, e)
+                self._display.result("error", f"{doc_meta.path}: {e}")
                 self._display.add_failure()
             finally:
-                self._display.clear_current(doc_meta.title)
+                self._display.clear_current(doc_meta.path)
 
         if sync:
+            doc_paths = {d.id: d.path for d in docs}
             removed = self.state.find_removed([d.id for d in docs])
             for doc_id in removed:
+                doc_path = doc_paths.get(doc_id, doc_id)
                 try:
                     if not dry_run:
                         self.dest.remove(doc_id)
                     self.state.mark_removed(doc_id)
-                    self._display.result("info", f"已移除: {doc_id}")
+                    self._display.result("info", f"已移除: {doc_path}")
                 except NotImplementedError:
                     pass
                 except Exception as e:
-                    self._display.result("error", f"移除失败 {doc_id}: {e}")
+                    self._display.result("error", f"移除失败 {doc_path}: {e}")
 
         self._display.stop()
         self._display.print_summary()
