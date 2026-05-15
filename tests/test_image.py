@@ -68,3 +68,102 @@ class TestOpenAIVisionClient:
 
         assert filename  # 应该有降级值
         assert description  # 应该有降级值
+
+
+from docpipe.image import ImagePostProcessor
+
+
+class _FakeVisionClient:
+    def __init__(self, results: dict[str, tuple[str, str]] | None = None):
+        self.results = results or {}
+        self.calls: list[tuple[bytes, str]] = []
+
+    def describe(self, image_bytes: bytes, context: str) -> tuple[str, str]:
+        self.calls.append((image_bytes, context))
+        if self.results:
+            for _, val in self.results.items():
+                return val
+        return "test-image", "测试图片描述"
+
+
+def _mock_get(url, **kwargs):
+    mock_resp = MagicMock()
+    mock_resp.content = b"fake-image-data"
+    mock_resp.raise_for_status = MagicMock()
+    return mock_resp
+
+
+class TestImagePostProcessor:
+    def test_process_replaces_image_refs(self, monkeypatch):
+        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
+        vision = _FakeVisionClient(results={
+            "default": ("architecture-diagram", "展示微服务三层架构"),
+        })
+        processor = ImagePostProcessor(vision_client=vision)
+
+        markdown = '![imag.png](https://example.com/test.png)'
+        result, metadata = processor.process(markdown, "测试文档")
+
+        assert "**architecture diagram**：展示微服务三层架构" in result
+        assert "image://architecture-diagram.png" in result
+        assert "architecture-diagram.png" in metadata
+        assert metadata["architecture-diagram.png"]["original_url"] == "https://example.com/test.png"
+        assert metadata["architecture-diagram.png"]["description"] == "展示微服务三层架构"
+
+    def test_process_keeps_original_on_failure(self):
+        vision = _FakeVisionClient()
+        vision.describe = lambda img, ctx: (_ for _ in ()).throw(RuntimeError("API error"))
+
+        processor = ImagePostProcessor(vision_client=vision)
+        markdown = '![img.png](https://example.com/broken.png)'
+        result, metadata = processor.process(markdown, "测试文档")
+
+        assert "https://example.com/broken.png" in result
+        assert metadata == {}
+
+    def test_process_skips_already_processed(self):
+        vision = _FakeVisionClient()
+        processor = ImagePostProcessor(vision_client=vision)
+
+        markdown = '![test](image://already-done.png)'
+        result, metadata = processor.process(markdown, "测试文档")
+
+        assert result == '![test](image://already-done.png)'
+        assert metadata == {}
+        assert len(vision.calls) == 0
+
+    def test_process_multiple_images(self, monkeypatch):
+        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
+        call_count = [0]
+
+        def mock_describe(img, ctx):
+            call_count[0] += 1
+            return f"image-{call_count[0]}", f"描述{call_count[0]}"
+
+        vision = _FakeVisionClient()
+        vision.describe = mock_describe
+
+        processor = ImagePostProcessor(vision_client=vision)
+        markdown = (
+            '![a](https://example.com/a.png)\n'
+            '一些文字\n'
+            '![b](https://example.com/b.png)'
+        )
+        result, metadata = processor.process(markdown, "测试文档")
+
+        assert len(metadata) == 2
+        assert "image-1.png" in metadata
+        assert "image-2.png" in metadata
+        assert "image://image-1.png" in result
+        assert "image://image-2.png" in result
+
+    def test_process_no_images(self):
+        vision = _FakeVisionClient()
+        processor = ImagePostProcessor(vision_client=vision)
+
+        markdown = "这是一段没有图片的文字"
+        result, metadata = processor.process(markdown, "测试文档")
+
+        assert result == markdown
+        assert metadata == {}
+        assert len(vision.calls) == 0

@@ -5,6 +5,8 @@ import json
 import logging
 import re
 
+import requests as req
+
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -68,3 +70,46 @@ class OpenAIVisionClient:
                     pass
             logger.warning(f"Vision API 返回无法解析: {raw[:200]}")
             return "image-unknown", "图片描述解析失败"
+
+
+class ImagePostProcessor:
+    def __init__(self, vision_client: OpenAIVisionClient, max_image_size: int = 10 * 1024 * 1024):
+        self.vision_client = vision_client
+        self.max_image_size = max_image_size
+
+    def process(self, markdown: str, source_context: str) -> tuple[str, dict]:
+        image_metadata: dict[str, dict] = {}
+        pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+
+        def replace_image(match: re.Match) -> str:
+            url = match.group(2)
+
+            if url.startswith("image://"):
+                return match.group(0)
+
+            try:
+                resp = req.get(url, timeout=30)
+                resp.raise_for_status()
+                image_bytes = resp.content
+
+                if len(image_bytes) > self.max_image_size:
+                    logger.warning(f"图片过大 ({len(image_bytes)} bytes)，跳过: {url}")
+                    return match.group(0)
+
+                filename, description = self.vision_client.describe(image_bytes, source_context)
+
+                full_filename = f"{filename}.png"
+                image_metadata[full_filename] = {
+                    "original_url": url,
+                    "description": description,
+                }
+
+                new_alt = filename.replace("-", " ")
+                return f"**{new_alt}**：{description}\n\n![{new_alt}](image://{full_filename})"
+
+            except Exception as e:
+                logger.warning(f"图片处理失败 {url}: {e}")
+                return match.group(0)
+
+        new_markdown = re.sub(pattern, replace_image, markdown)
+        return new_markdown, image_metadata
