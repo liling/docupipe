@@ -82,7 +82,7 @@ class ImagePostProcessor:
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
         def replace_image(match: re.Match) -> str:
-            url = match.group(2).strip().strip('"').strip("'")
+            url = match.group(2).strip().strip('"').strip("'").strip()
 
             if url.startswith("image://"):
                 return match.group(0)

@@ -104,8 +104,11 @@ class Display:
             elif status == "skip":
                 self.skipped += 1
                 self._advance_progress()
+            elif status == "info":
+                self.completed += 1
+                self._advance_progress()
             else:
-                # error: 不计数不推进，由 add_failure() 负责；info: 仅显示
+                # error: 不计数不推进，由 add_failure() 负责
                 pass
         self._print(text)
 

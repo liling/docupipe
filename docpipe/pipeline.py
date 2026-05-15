@@ -17,18 +17,26 @@ class StateManager:
     def __init__(self, path: Path):
         self._path = path
 
-    def load(self) -> dict[str, str]:
+    def load(self) -> dict[str, dict]:
         if not self._path.exists():
             return {}
         try:
-            return json.loads(self._path.read_text(encoding="utf-8"))
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
+        # 兼容旧格式：{id: hash} → {id: {"hash": hash, "path": ""}}
+        result = {}
+        for k, v in raw.items():
+            if isinstance(v, str):
+                result[k] = {"hash": v, "path": ""}
+            else:
+                result[k] = v
+        return result
 
-    def save(self, hashes: dict[str, str]) -> None:
+    def save(self, entries: dict[str, dict]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(
-            json.dumps(hashes, indent=2, ensure_ascii=False),
+            json.dumps(entries, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
@@ -36,12 +44,16 @@ class StateManager:
         return doc_id in self.load()
 
     def is_unchanged(self, doc_id: str, content_hash: str) -> bool:
-        return self.load().get(doc_id) == content_hash
+        entry = self.load().get(doc_id, {})
+        return entry.get("hash") == content_hash
 
-    def mark_done(self, doc_id: str, content_hash: str) -> None:
-        hashes = self.load()
-        hashes[doc_id] = content_hash
-        self.save(hashes)
+    def mark_done(self, doc_id: str, content_hash: str, path: str = "") -> None:
+        entries = self.load()
+        entries[doc_id] = {"hash": content_hash, "path": path}
+        self.save(entries)
+
+    def get_path(self, doc_id: str) -> str:
+        return self.load().get(doc_id, {}).get("path", "")
 
     def find_removed(self, current_ids: list[str]) -> list[str]:
         stored = self.load()
@@ -49,9 +61,9 @@ class StateManager:
         return [doc_id for doc_id in stored if doc_id not in current_set]
 
     def mark_removed(self, doc_id: str) -> None:
-        hashes = self.load()
-        hashes.pop(doc_id, None)
-        self.save(hashes)
+        entries = self.load()
+        entries.pop(doc_id, None)
+        self.save(entries)
 
 
 class ContentTypeStrategy:
@@ -97,10 +109,11 @@ class Pipeline:
         logger.info("Pipeline 开始: %s → %s (resume=%s, sync=%s, dry_run=%s)",
                      self.source.name, self.dest.name, resume, sync, dry_run)
         docs = self.source.list_documents()
-        logger.info("待处理文档: %d 个", len(docs))
 
         if resume:
             docs = [d for d in docs if not self.state.is_processed(d.id)]
+
+        logger.info("待处理文档: %d 个", len(docs))
 
         self._display.start(f"Pipeline: {self.source.name} → {self.dest.name}", len(docs))
 
@@ -116,7 +129,7 @@ class Pipeline:
                 action = self._content_type_strategy.resolve(content_type)
                 if action is None or action == "skip":
                     ct_label = content_type or "未知类型"
-                    self._display.result("skip", f"{doc_meta.path} [contentType={ct_label}, action={action or '无规则'}]")
+                    self._display.result("skip", f"{doc_meta.path} [contentType={ct_label}, action={action or 'skip'}]")
                     continue
                 if action in ("source", "download"):
                     converter_name = None
@@ -124,13 +137,10 @@ class Pipeline:
                     # 第二级：TypeRuleResolver（仅 convert 动作）
                     if self._type_resolver:
                         converter_name = self._resolve_type(doc_meta)
-                        ext_info = doc_meta.extra.get("extension", "") or ""
-                        ext_label = f".{ext_info}" if ext_info else "未知扩展名"
-                        if converter_name is None:
-                            self._display.result("skip", f"{doc_meta.path} [contentType={content_type}, 无匹配 converter: {ext_label}]")
-                            continue
                         if converter_name == "skip":
-                            self._display.result("skip", f"{doc_meta.path} [contentType={content_type}, converter 跳过: {ext_label}]")
+                            ext_info = doc_meta.extra.get("extension", "") or ""
+                            ext_label = f".{ext_info}" if ext_info else "未知扩展名"
+                            self._display.result("skip", f"{doc_meta.path} [contentType={content_type}, converter=skip: {ext_label}]")
                             continue
                         if converter_name == "source":
                             converter_name = None
@@ -143,17 +153,26 @@ class Pipeline:
                 type_info = doc_meta.extra.get("contentType", "") or ""
                 type_label = f".{ext_info}" if ext_info else type_info or "未知类型"
                 if converter_name is None:
-                    self._display.result("skip", f"{doc_meta.path} [无处理规则: {type_label}]")
+                    self._display.result("skip", f"{doc_meta.path} [action=convert, 无匹配 converter: {type_label}]")
                     continue
                 if converter_name == "skip":
-                    self._display.result("skip", f"{doc_meta.path} [跳过: {type_label}]")
+                    self._display.result("skip", f"{doc_meta.path} [action=convert, converter=skip: {type_label}]")
                     continue
                 if converter_name == "source":
                     converter_name = None
             else:
                 converter_name = None
 
-            self._display.set_current(doc_meta.path)
+            # 构建策略标签用于输出
+            _strategy_parts = []
+            if self._content_type_strategy:
+                _strategy_parts.append(f"action={action}")
+            if converter_name:
+                _strategy_parts.append(f"converter={converter_name}")
+            _strategy_label = f" [{', '.join(_strategy_parts)}]" if _strategy_parts else ""
+
+            _display_path = f"{doc_meta.path}{_strategy_label}"
+            self._display.set_current(_display_path)
             try:
                 doc = self.source.fetch(doc_meta)
 
@@ -173,32 +192,33 @@ class Pipeline:
                 doc.meta.extra["_source"] = self.source.name
 
                 if dry_run:
-                    self._display.result("info", f"[dry-run] {doc_meta.path}")
+                    self._display.result("info", f"[dry-run] {_display_path}")
                 else:
                     self.dest.write(doc)
-                    self._display.result("success", doc_meta.path)
-
-                self.state.mark_done(doc_meta.id, doc.meta.hash)
+                    self._display.result("success", _display_path)
+                    self.state.mark_done(doc_meta.id, doc.meta.hash, doc_meta.path)
             except SkipDocument as e:
                 logger.info("跳过文档: %s - %s", doc_meta.path, e)
                 self._display.result("skip", f"{doc_meta.path} ({e})")
             except Exception as e:
-                logger.error("文档处理失败: %s - %s", doc_meta.path, e)
-                self._display.result("error", f"{doc_meta.path}: {e}")
+                ct = doc_meta.extra.get("contentType", "")
+                ext = doc_meta.extra.get("extension", "")
+                detail = f"contentType={ct}" + (f", extension={ext}" if ext else "")
+                logger.error("文档处理失败: %s [%s] - %s", doc_meta.path, detail, e)
+                self._display.result("error", f"{doc_meta.path} [{detail}]: {e}")
                 self._display.add_failure()
             finally:
-                self._display.clear_current(doc_meta.path)
+                self._display.clear_current(_display_path)
 
         if sync:
-            doc_paths = {d.id: d.path for d in docs}
             removed = self.state.find_removed([d.id for d in docs])
             for doc_id in removed:
-                doc_path = doc_paths.get(doc_id, doc_id)
+                doc_path = self.state.get_path(doc_id) or doc_id
                 try:
                     if not dry_run:
                         self.dest.remove(doc_id)
-                    self.state.mark_removed(doc_id)
-                    self._display.result("info", f"已移除: {doc_path}")
+                        self.state.mark_removed(doc_id)
+                    self._display.result("info", f"从 {self.dest.name} 移除: {doc_path}")
                 except NotImplementedError:
                     pass
                 except Exception as e:

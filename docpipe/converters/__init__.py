@@ -14,3 +14,6 @@ def get_converter(name: str):
     if name not in CONVERTERS:
         raise ValueError(f"未知的 converter: {name}")
     return CONVERTERS[name]
+
+
+from docpipe.converters import markitdown  # noqa: E402,F401

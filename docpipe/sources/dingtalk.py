@@ -82,9 +82,10 @@ class _WikiClient:
 
 @register_source("dingtalk")
 class DingtalkSource(SourceBase):
-    def __init__(self, space_id: str, folder_id: str | None = None, **kwargs):
+    def __init__(self, space_id: str, folder_id: str | None = None, folders: list[str] | None = None, **kwargs):
         self._space_id = space_id
         self._folder_id = folder_id
+        self._folders = folders
         self._client = _WikiClient()
         self._space_name = ""
         self._nodes_cache: list[dict] | None = None
@@ -107,8 +108,17 @@ class DingtalkSource(SourceBase):
                 self._space_name = space_info.get("name", self._space_id)
             except Exception:
                 self._space_name = self._space_id
-        logger.info("列出文档: 知识库=%s, 文件夹=%s", self._space_name, self._folder_id or "(根目录)")
-        nodes = self._collect_nodes(self._space_id, self._folder_id)
+        logger.info("列出文档: 知识库=%s, 文件夹=%s", self._space_name, self._folders or self._folder_id or "(根目录)")
+        if self._folders:
+            nodes = []
+            for folder_path in self._folders:
+                folder_id = self._resolve_folder_path(folder_path)
+                if folder_id:
+                    nodes.extend(self._collect_nodes(self._space_id, folder_id, parent_path=folder_path))
+                else:
+                    logger.warning("跳过无效的文件夹路径: %s", folder_path)
+        else:
+            nodes = self._collect_nodes(self._space_id, self._folder_id)
         result = []
         for node in nodes:
             node_type = node.get("nodeType", "")
@@ -116,16 +126,26 @@ class DingtalkSource(SourceBase):
                 continue
             node_id = node.get("nodeId", "")
             title = node.get("name", "未命名")
+            content_type = node.get("contentType", "")
+            extension = node.get("extension", "")
+
+            # doc list 不返回 DOCUMENT 类型的扩展名，用 doc info 补全
+            if content_type == "DOCUMENT" and not extension:
+                info = self._client.get_node_info(node_id)
+                extension = info.get("extension", "")
+                logger.debug("doc info 补全 extension: %s → %s", title, extension or "(空)")
+
             result.append(DocumentMeta(
                 id=node_id,
                 title=title,
                 path=node.get("_path", ""),
                 hash="",
                 extra={
-                    "contentType": node.get("contentType", ""),
-                    "extension": node.get("extension", ""),
+                    "contentType": content_type,
+                    "extension": extension,
                     "updateTime": node.get("updateTime"),
                     "nodeType": node_type,
+                    "space_name": self._space_name,
                 },
             ))
         logger.info("列出文档完成: 共 %d 个文档", len(result))
@@ -177,6 +197,31 @@ class DingtalkSource(SourceBase):
             content=markdown,
             content_type="markdown",
         )
+
+    def _resolve_folder_path(self, path: str) -> str | None:
+        """将文件夹路径（如 '产品规划物料/解决方案'）解析为 folder ID"""
+        segments = [s.strip() for s in path.split("/") if s.strip()]
+        if not segments:
+            return None
+
+        parent_id = None
+        resolved = ""
+        for segment in segments:
+            folder_label = resolved or "(根)"
+            nodes = self._client.list_nodes(self._space_id, parent_id,
+                                            folder_name=folder_label, workspace_name=self._space_name)
+            matched = None
+            for node in nodes:
+                if node.get("nodeType") == "folder" and node.get("name") == segment:
+                    matched = node
+                    break
+            if not matched:
+                logger.warning("未找到文件夹: '%s' (在 %s 下)", segment, resolved or "根目录")
+                return None
+            parent_id = matched.get("nodeId")
+            resolved = f"{resolved}/{segment}" if resolved else segment
+
+        return parent_id
 
     def _collect_nodes(self, space_id: str, folder_id: str | None, parent_path: str = "") -> list[dict]:
         folder_label = parent_path or "(根)"

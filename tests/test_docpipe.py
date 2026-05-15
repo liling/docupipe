@@ -55,8 +55,15 @@ def _make_doc(id: str, title: str, content: str = "hello", **extra) -> Document:
 class TestStateManager:
     def test_save_and_load(self, tmp_path):
         sm = StateManager(tmp_path / "state.json")
-        sm.save({"a": "hash1", "b": "hash2"})
-        assert sm.load() == {"a": "hash1", "b": "hash2"}
+        sm.save({"a": {"hash": "hash1", "path": ""}, "b": {"hash": "hash2", "path": "x/y"}})
+        assert sm.load() == {"a": {"hash": "hash1", "path": ""}, "b": {"hash": "hash2", "path": "x/y"}}
+
+    def test_load_old_format(self, tmp_path):
+        """兼容旧格式：{id: hash} → {id: {"hash": hash, "path": ""}}"""
+        p = tmp_path / "state.json"
+        p.write_text('{"a": "h1", "b": "h2"}', encoding="utf-8")
+        sm = StateManager(p)
+        assert sm.load() == {"a": {"hash": "h1", "path": ""}, "b": {"hash": "h2", "path": ""}}
 
     def test_load_empty(self, tmp_path):
         sm = StateManager(tmp_path / "nonexistent.json")
@@ -64,28 +71,34 @@ class TestStateManager:
 
     def test_is_processed(self, tmp_path):
         sm = StateManager(tmp_path / "state.json")
-        sm.save({"a": "h1"})
+        sm.save({"a": {"hash": "h1", "path": ""}})
         assert sm.is_processed("a")
         assert not sm.is_processed("b")
 
     def test_is_unchanged(self, tmp_path):
         sm = StateManager(tmp_path / "state.json")
-        sm.save({"a": "h1"})
+        sm.save({"a": {"hash": "h1", "path": ""}})
         assert sm.is_unchanged("a", "h1")
         assert not sm.is_unchanged("a", "h2")
         assert not sm.is_unchanged("b", "h1")
 
     def test_find_removed(self, tmp_path):
         sm = StateManager(tmp_path / "state.json")
-        sm.save({"a": "h1", "b": "h2", "c": "h3"})
+        sm.save({"a": {"hash": "h1", "path": ""}, "b": {"hash": "h2", "path": ""}, "c": {"hash": "h3", "path": ""}})
         removed = sm.find_removed(["a", "c"])
         assert removed == ["b"]
 
     def test_mark_removed(self, tmp_path):
         sm = StateManager(tmp_path / "state.json")
-        sm.save({"a": "h1", "b": "h2"})
+        sm.save({"a": {"hash": "h1", "path": ""}, "b": {"hash": "h2", "path": ""}})
         sm.mark_removed("a")
-        assert sm.load() == {"b": "h2"}
+        assert sm.load() == {"b": {"hash": "h2", "path": ""}}
+
+    def test_mark_done_stores_path(self, tmp_path):
+        sm = StateManager(tmp_path / "state.json")
+        sm.mark_done("a", "h1", "产品规划/方案")
+        assert sm.get_path("a") == "产品规划/方案"
+        assert sm.is_unchanged("a", "h1")
 
 
 class TestContentHash:
@@ -202,8 +215,43 @@ class TestPipeline:
         pipeline.run(dry_run=True)
 
         assert len(dest.written) == 0
-        # 但状态应该已记录
-        assert dest.written == []
+        # dry_run 不应写入状态
+        assert pipeline.state.load() == {}
+
+    def test_dry_run_sync_no_state_mutation(self, tmp_path):
+        """dry_run + sync 不应修改状态，连续执行结果一致"""
+        doc = _make_doc("1", "A")
+        source = FakeSource([doc])
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path)
+
+        # 第一次 dry_run
+        pipeline.run(sync=True, dry_run=True)
+        assert len(dest.written) == 0
+        assert len(dest.removed) == 0
+        assert pipeline.state.load() == {}
+
+        # 第二次 dry_run —— 应该和第一次行为一致
+        pipeline.run(sync=True, dry_run=True)
+        assert len(dest.written) == 0
+        assert len(dest.removed) == 0
+        assert pipeline.state.load() == {}
+
+    def test_dry_run_resume_idempotent(self, tmp_path):
+        """dry_run + resume 连续执行，不应因状态累积改变行为"""
+        docs = [_make_doc("1", "A"), _make_doc("2", "B")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path)
+
+        pipeline.run(resume=True, dry_run=True)
+        assert len(dest.written) == 0
+        assert pipeline.state.load() == {}
+
+        # 第二次 resume=True，因为状态未被 dry_run 写入，仍应处理全部文档
+        pipeline.run(resume=True, dry_run=True)
+        assert len(dest.written) == 0
+        assert pipeline.state.load() == {}
 
 
 class TestPipelineContentTypeStrategy:
@@ -249,8 +297,8 @@ class TestPipelineContentTypeStrategy:
         pipeline.run()
         assert len(dest.written) == 1
 
-    def test_convert_no_converter_skips(self, tmp_path):
-        """convert 但无匹配 converter 时跳过"""
+    def test_convert_no_converter_processes(self, tmp_path):
+        """convert 但无匹配 converter 时仍处理（交给 Source）"""
         docs = [_make_doc("1", "A", contentType="DOCUMENT", extension="exe")]
         source = FakeSource(docs)
         dest = FakeDestination()
@@ -259,7 +307,7 @@ class TestPipelineContentTypeStrategy:
         pipeline = Pipeline(source, dest, tmp_path,
                             content_type_strategy=strategy, type_resolver=resolver)
         pipeline.run()
-        assert len(dest.written) == 0
+        assert len(dest.written) == 1
 
     def test_convert_without_resolver_processes(self, tmp_path):
         """convert 但无 resolver 时仍处理（不转换）"""
