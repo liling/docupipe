@@ -10,6 +10,7 @@ from docpipe.models import Document, DocumentMeta
 from docpipe.pipeline import Pipeline, StateManager, content_hash
 from docpipe.sources.base import SourceBase
 from docpipe.destinations.base import DestinationBase
+from docpipe.converters.resolver import TypeRuleResolver
 
 
 class FakeSource(SourceBase):
@@ -97,6 +98,37 @@ class TestContentHash:
         h = content_hash(b"hello")
         expected = hashlib.sha256(b"hello").hexdigest()
         assert h == expected
+
+
+class TestContentTypeStrategy:
+    def test_resolve_known_type(self):
+        from docpipe.pipeline import ContentTypeStrategy
+        strategy = ContentTypeStrategy({"DOCUMENT": "convert", "ALIDOC": "source"})
+        assert strategy.resolve("DOCUMENT") == "convert"
+        assert strategy.resolve("ALIDOC") == "source"
+
+    def test_resolve_unknown_returns_none(self):
+        from docpipe.pipeline import ContentTypeStrategy
+        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
+        assert strategy.resolve("UNKNOWN") is None
+
+    def test_empty_rules(self):
+        from docpipe.pipeline import ContentTypeStrategy
+        strategy = ContentTypeStrategy()
+        assert strategy.resolve("DOCUMENT") is None
+
+    def test_all_actions(self):
+        from docpipe.pipeline import ContentTypeStrategy
+        strategy = ContentTypeStrategy({
+            "DOCUMENT": "convert",
+            "ALIDOC": "source",
+            "ARCHIVE": "skip",
+            "IMAGE": "download",
+        })
+        assert strategy.resolve("DOCUMENT") == "convert"
+        assert strategy.resolve("ALIDOC") == "source"
+        assert strategy.resolve("ARCHIVE") == "skip"
+        assert strategy.resolve("IMAGE") == "download"
 
 
 class TestPipeline:
@@ -221,3 +253,44 @@ class TestLocalSource:
         from docpipe.sources.local import LocalSource
         with pytest.raises(ValueError, match="目录不存在"):
             LocalSource(input_dir="/nonexistent/path")
+
+
+class TestPipelineTypeRules:
+    def test_skip_unknown_type(self, tmp_path):
+        """未知扩展名不在 type_rules 中，直接跳过"""
+        docs = [_make_doc("1", "A", extension="tar.gz")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
+        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
+        pipeline.run()
+        assert len(dest.written) == 0
+
+    def test_skip_explicit_skip(self, tmp_path):
+        """配置中显式标记 skip 的文件被跳过"""
+        docs = [_make_doc("1", "A", extension="exe")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        resolver = TypeRuleResolver(extension_rules={".exe": "skip"})
+        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
+        pipeline.run()
+        assert len(dest.written) == 0
+
+    def test_process_with_converter(self, tmp_path):
+        """匹配到 converter 的文件正常处理"""
+        docs = [_make_doc("1", "A", extension="txt")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        resolver = TypeRuleResolver(extension_rules={".txt": "markitdown"})
+        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
+        pipeline.run()
+        assert len(dest.written) == 1
+
+    def test_no_resolver_processes_all(self, tmp_path):
+        """无 resolver 时走原有逻辑，全部处理"""
+        docs = [_make_doc("1", "A")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline.run()
+        assert len(dest.written) == 1

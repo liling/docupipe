@@ -54,6 +54,16 @@ class StateManager:
         self.save(hashes)
 
 
+class ContentTypeStrategy:
+    """钉钉 contentType 到处理动作的映射"""
+
+    def __init__(self, rules: dict[str, str] | None = None):
+        self._rules = rules or {}
+
+    def resolve(self, content_type: str) -> str | None:
+        return self._rules.get(content_type)
+
+
 def content_hash(content: str | bytes) -> str:
     if isinstance(content, str):
         content = content.encode("utf-8")
