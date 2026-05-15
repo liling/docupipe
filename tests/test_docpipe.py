@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -398,6 +399,54 @@ class TestLocalDriveDestination:
         assert meta_json["content_hash"] == "abc123"
 
         assert result == str(expected_file)
+
+    def test_write_skips_unchanged(self, tmp_path):
+        from docpipe.destinations.localdrive import LocalDriveDestination
+
+        output_dir = tmp_path / "output"
+        dest = LocalDriveDestination(output_dir=str(output_dir))
+        doc = Document(
+            meta=DocumentMeta(id="1", title="A", path="A", hash="h1", extra={"space_name": "S"}),
+            content="hello",
+            content_type="markdown",
+        )
+
+        # 第一次写入
+        dest.write(doc)
+        file_path = output_dir / "S" / "A.md"
+        mtime1 = file_path.stat().st_mtime
+
+        # 修改时间不同则说明被重写了
+        time.sleep(0.05)
+
+        # 第二次写入（内容相同，hash 相同）
+        dest2 = LocalDriveDestination(output_dir=str(output_dir))
+        dest2.write(doc)
+        mtime2 = file_path.stat().st_mtime
+
+        assert mtime1 == mtime2
+
+    def test_write_overwrites_changed(self, tmp_path):
+        from docpipe.destinations.localdrive import LocalDriveDestination
+
+        output_dir = tmp_path / "output"
+        dest = LocalDriveDestination(output_dir=str(output_dir))
+        doc1 = Document(
+            meta=DocumentMeta(id="1", title="A", path="A", hash="h1", extra={"space_name": "S"}),
+            content="old content",
+            content_type="markdown",
+        )
+        dest.write(doc1)
+
+        doc2 = Document(
+            meta=DocumentMeta(id="1", title="A", path="A", hash="h2", extra={"space_name": "S"}),
+            content="new content",
+            content_type="markdown",
+        )
+        dest.write(doc2)
+
+        file_path = output_dir / "S" / "A.md"
+        assert file_path.read_text(encoding="utf-8") == "new content"
 
 
 class TestLocalSource:

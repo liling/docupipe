@@ -15,6 +15,15 @@ class LocalDriveDestination(DestinationBase):
 
     def write(self, doc: Document) -> str:
         file_path = self._resolve_path(doc)
+
+        # 文件已存在且 hash 相同 → 跳过
+        if file_path.exists() and doc.meta.hash:
+            sidecar = Path(str(file_path) + ".json")
+            if sidecar.exists():
+                stored = json.loads(sidecar.read_text(encoding="utf-8"))
+                if stored.get("content_hash") == doc.meta.hash:
+                    return str(file_path)
+
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         content = doc.content
