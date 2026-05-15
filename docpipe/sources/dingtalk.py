@@ -8,9 +8,12 @@ from pathlib import Path
 
 import requests
 
-from docpipe.models import Document, DocumentMeta
+from docpipe.models import Document, DocumentMeta, SkipDocument
 
 logger = logging.getLogger(__name__)
+
+_ALIDOC_UNSUPPORTED = frozenset({"axls", "amindmap", "aform", "abitable", "able"})
+
 from docpipe.sources import register_source
 from docpipe.sources.base import SourceBase
 
@@ -107,14 +110,9 @@ class DingtalkSource(SourceBase):
         logger.info("列出文档: 知识库=%s, 文件夹=%s", self._space_name, self._folder_id or "(根目录)")
         nodes = self._collect_nodes(self._space_id, self._folder_id)
         result = []
-        _UNSUPPORTED_EXTENSIONS = {"axls", "amindmap", "aform", "abitable", "able"}
         for node in nodes:
             node_type = node.get("nodeType", "")
             if node_type == "folder":
-                continue
-            extension = node.get("extension", "")
-            if extension in _UNSUPPORTED_EXTENSIONS:
-                logger.debug("跳过不支持的钉钉类型: %s (extension=%s)", node.get("name", ""), extension)
                 continue
             node_id = node.get("nodeId", "")
             title = node.get("name", "未命名")
@@ -150,10 +148,8 @@ class DingtalkSource(SourceBase):
                 extra["extension"] = extension
                 logger.debug("doc info 补全 extension: %s → %s", doc_meta.title, extension or "(空)")
 
-            _UNSUPPORTED = {"axls", "amindmap", "aform", "abitable", "able"}
-            if extension in _UNSUPPORTED:
-                from docpipe.models import SkipDocument
-                raise SkipDocument(f"不支持的钉钉类型: extension={extension}")
+            if extension in _ALIDOC_UNSUPPORTED:
+                raise SkipDocument(f"ALIDOC 子类型暂不支持: extension={extension}")
 
             markdown = self._client.read_document(node_id)
             markdown = self._clean_html_tags(markdown)
