@@ -105,6 +105,8 @@ class Pipeline:
                 if converter_name == "skip":
                     self._display.result("skip", f"{doc_meta.path} (跳过)")
                     continue
+                if converter_name == "source":
+                    converter_name = None
             else:
                 converter_name = None
 

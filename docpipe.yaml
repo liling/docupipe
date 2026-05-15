@@ -17,7 +17,8 @@ type_rules:
     ".rtf": markitdown
     ".odt": markitdown
     ".ods": markitdown
-  mime_types: {}
+  mime_types:
+    ALIDOC: source
 
 pipelines:
 
