@@ -21,7 +21,7 @@ _CONVERTIBLE_EXTENSIONS = {
     ".rtf", ".odt", ".ods",
 }
 
-_SKIP_CONTENT_TYPES = {"AXLS"}
+_SKIP_CONTENT_TYPES = {"AXLS", "AMINDMAP", "AFORM"}
 
 
 class _WikiClient:
@@ -112,17 +112,17 @@ class DingtalkSource(SourceBase):
                 continue
             content_type = node.get("contentType", "")
             extension = node.get("extension", "")
-            # 跳过钉钉表格等无法处理的类型
-            if content_type in _SKIP_CONTENT_TYPES or extension == "axls":
+            # 跳过钉钉表格、思维导图、表单等无法处理的类型
+            if content_type in _SKIP_CONTENT_TYPES or extension in ("axls", "amindmap"):
                 logger.debug("跳过不支持的类型: %s (contentType=%s, extension=%s)",
                              node.get("name", "未命名"), content_type, extension)
                 skipped_count += 1
                 continue
-            # 跳过不可转换的文件类型（非 adoc 且扩展名不在支持列表中）
+            # 非钉钉原生文档，必须扩展名在可转换白名单中才处理
             if content_type != "ALIDOC" and extension != "adoc":
                 ext_lower = f".{extension}" if extension else ""
-                if ext_lower and ext_lower not in _CONVERTIBLE_EXTENSIONS:
-                    logger.debug("跳过不可转换的文件: %s (extension=%s)", node.get("name", "未命名"), extension)
+                if ext_lower not in _CONVERTIBLE_EXTENSIONS:
+                    logger.debug("跳过不可转换的文件: %s (extension=%s)", node.get("name", "未命名"), extension or "(无)")
                     skipped_count += 1
                     continue
             node_id = node.get("nodeId", "")
