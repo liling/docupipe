@@ -361,6 +361,45 @@ class TestRegistration:
             get_destination("nonexistent")
 
 
+class TestLocalDriveDestination:
+    def test_write_creates_file_and_sidecar(self, tmp_path):
+        from docpipe.destinations.localdrive import LocalDriveDestination
+
+        output_dir = tmp_path / "output"
+        dest = LocalDriveDestination(output_dir=str(output_dir))
+        doc = Document(
+            meta=DocumentMeta(
+                id="node1",
+                title="方案",
+                path="产品规划/方案",
+                hash="abc123",
+                extra={"space_name": "知识库A", "contentType": "ALIDOC", "extension": "adoc"},
+            ),
+            content="# 方案内容",
+            content_type="markdown",
+        )
+
+        result = dest.write(doc)
+
+        # 文件已创建，路径包含 space_name 和原始路径，扩展名由 content_type 推断
+        expected_file = output_dir / "知识库A" / "产品规划" / "方案.md"
+        assert expected_file.exists()
+        assert expected_file.read_text(encoding="utf-8") == "# 方案内容"
+
+        # 伴生 json
+        sidecar = expected_file.parent / "方案.md.json"
+        assert sidecar.exists()
+        meta_json = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert meta_json["id"] == "node1"
+        assert meta_json["title"] == "方案"
+        assert meta_json["space_name"] == "知识库A"
+        assert meta_json["relative_path"] == "产品规划/方案"
+        assert meta_json["full_path"] == "知识库A/产品规划/方案"
+        assert meta_json["content_hash"] == "abc123"
+
+        assert result == str(expected_file)
+
+
 class TestLocalSource:
     def test_list_documents(self, tmp_path):
         (tmp_path / "a.md").write_text("hello a")

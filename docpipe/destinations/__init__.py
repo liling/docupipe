@@ -24,3 +24,4 @@ def get_destination(name: str) -> type[DestinationBase]:
 
 # 自动注册内置 destination
 import docpipe.destinations.hindsight  # noqa: F401, E402
+import docpipe.destinations.localdrive  # noqa: F401, E402
