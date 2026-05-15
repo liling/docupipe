@@ -19,6 +19,9 @@ type_rules:
     ".ods": markitdown
   mime_types:
     ALIDOC: source
+    AXLS: skip
+    AMINDMAP: skip
+    AFORM: skip
 
 pipelines:
 

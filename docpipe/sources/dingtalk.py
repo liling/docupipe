@@ -48,7 +48,7 @@ class _WikiClient:
             if not page_token:
                 break
         logger.info("列出节点完成: 工作区=%s, 文件夹=%s, 共 %d 页, %d 个节点",
-                     workspace_id, folder_id or "(根目录)", page_count, len(all_items))
+                     workspace_id, folder_id or "(根)", page_count, len(all_items))
         return all_items
 
     def read_document(self, node_id: str) -> str:
@@ -79,6 +79,7 @@ class DingtalkSource(SourceBase):
         self._space_id = space_id
         self._folder_id = folder_id
         self._client = _WikiClient()
+        self._space_name = ""
         self._nodes_cache: list[dict] | None = None
 
         self._image_processor = None
@@ -93,12 +94,23 @@ class DingtalkSource(SourceBase):
             self._image_processor = ImagePostProcessor(vision_client)
 
     def list_documents(self) -> list[DocumentMeta]:
-        logger.info("列出文档: space_id=%s, folder_id=%s", self._space_id, self._folder_id or "(根目录)")
+        if not self._space_name:
+            try:
+                space_info = self._client.get_space_info(self._space_id)
+                self._space_name = space_info.get("name", self._space_id)
+            except Exception:
+                self._space_name = self._space_id
+        logger.info("列出文档: 知识库=%s, 文件夹=%s", self._space_name, self._folder_id or "(根目录)")
         nodes = self._collect_nodes(self._space_id, self._folder_id)
         result = []
+        _UNSUPPORTED_EXTENSIONS = {"axls", "amindmap", "aform", "abitable"}
         for node in nodes:
             node_type = node.get("nodeType", "")
             if node_type == "folder":
+                continue
+            extension = node.get("extension", "")
+            if extension in _UNSUPPORTED_EXTENSIONS:
+                logger.debug("跳过不支持的钉钉类型: %s (extension=%s)", node.get("name", ""), extension)
                 continue
             node_id = node.get("nodeId", "")
             title = node.get("name", "未命名")
@@ -127,6 +139,9 @@ class DingtalkSource(SourceBase):
         extra = dict(doc_meta.extra)
 
         if content_type == "ALIDOC" or extension == "adoc":
+            # 防御：部分文件虽标记为 ALIDOC 但实际是表格等不可读类型
+            if extension in ("axls", "amindmap", "aform"):
+                raise ValueError(f"不支持的钉钉表格/表单类型: extension={extension}")
             markdown = self._client.read_document(node_id)
             markdown = self._clean_html_tags(markdown)
         else:
@@ -155,7 +170,8 @@ class DingtalkSource(SourceBase):
         )
 
     def _collect_nodes(self, space_id: str, folder_id: str | None, parent_path: str = "") -> list[dict]:
-        logger.debug("收集节点: space_id=%s, folder_id=%s, path=%s", space_id, folder_id or "(根)", parent_path or "(根)")
+        folder_label = parent_path or "(根)"
+        logger.debug("收集节点: %s/%s", self._space_name, folder_label)
         nodes = self._client.list_nodes(space_id, folder_id)
         result = []
         folder_count = 0
