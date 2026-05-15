@@ -1,7 +1,7 @@
 [project]
-name = "dwsdocs-downloader"
+name = "docpipe"
 version = "0.1.0"
-description = "钉钉知识库内容下载并同步到 Hindsight"
+description = "通用文档传输 pipeline"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1.0",
@@ -9,6 +9,8 @@ dependencies = [
     "hindsight-client>=0.1.0",
     "tqdm>=4.66.0",
     "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
@@ -18,14 +20,14 @@ dev = [
 ]
 
 [project.scripts]
-dwsdocs-downloader = "dwsdocs_downloader.cli:main"
+docpipe = "docpipe.cli:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["dwsdocs_downloader*"]
+include = ["docpipe*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
