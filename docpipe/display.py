@@ -95,7 +95,7 @@ class Display:
                 self.skipped += 1
                 self._advance_progress()
             else:
-                # error/info: 不推进进度条，由 add_failure() 负责
+                # error: 不计数不推进，由 add_failure() 负责；info: 仅显示
                 pass
             self._print(text)
 
