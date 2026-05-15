@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import tempfile
 from pathlib import Path
 
 import requests
 
 from docpipe.models import Document, DocumentMeta
+
+logger = logging.getLogger(__name__)
 from docpipe.sources import register_source
 from docpipe.sources.base import SourceBase
 
@@ -72,6 +75,17 @@ class DingtalkSource(SourceBase):
         self._client = _WikiClient()
         self._nodes_cache: list[dict] | None = None
 
+        self._image_processor = None
+        if kwargs.get("image_description"):
+            import os
+            from docpipe.image import ImagePostProcessor, OpenAIVisionClient
+            vision_client = OpenAIVisionClient(
+                api_key=kwargs.get("image_description_api_key", "") or os.environ.get("IMAGE_DESCRIPTION_API_KEY", ""),
+                base_url=kwargs.get("image_description_base_url", "") or os.environ.get("IMAGE_DESCRIPTION_BASE_URL", ""),
+                model=kwargs.get("image_description_model", "") or os.environ.get("IMAGE_DESCRIPTION_MODEL", "gpt-4o"),
+            )
+            self._image_processor = ImagePostProcessor(vision_client)
+
     def list_documents(self) -> list[DocumentMeta]:
         nodes = self._collect_nodes(self._space_id, self._folder_id)
         result = []
@@ -105,6 +119,11 @@ class DingtalkSource(SourceBase):
         else:
             ext = extension if extension else "bin"
             markdown = self._download_and_convert(node_id, ext)
+
+        if self._image_processor:
+            source_context = f"{doc_meta.title} - {doc_meta.path}"
+            markdown, image_metadata = self._image_processor.process(markdown, source_context)
+            doc_meta.extra["image_metadata"] = image_metadata
 
         content_hash = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
         return Document(

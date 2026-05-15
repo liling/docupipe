@@ -167,3 +167,94 @@ class TestImagePostProcessor:
         assert result == markdown
         assert metadata == {}
         assert len(vision.calls) == 0
+
+
+class TestDingtalkSourceImageIntegration:
+    def test_fetch_with_image_description_enabled(self, monkeypatch):
+        from docpipe.sources.dingtalk import DingtalkSource
+
+        vision = _FakeVisionClient(results={
+            "default": ("architecture-diagram", "展示系统架构"),
+        })
+
+        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
+        mock_client = MagicMock()
+        mock_client.read_document.return_value = (
+            "# 标题\n\n"
+            "![img.png](https://example.com/img.png)\n\n"
+            "正文内容"
+        )
+        monkeypatch.setattr(
+            "docpipe.sources.dingtalk._WikiClient",
+            lambda: mock_client,
+        )
+
+        source = DingtalkSource(
+            space_id="test-space",
+            image_description=True,
+            image_description_api_key="key",
+            image_description_base_url="https://api.example.com/v1",
+            image_description_model="gpt-4o",
+        )
+        source._image_processor.vision_client = vision
+
+        doc_meta = DocumentMeta(
+            id="test-node",
+            title="测试文档",
+            path="测试文档",
+            hash="",
+            extra={"contentType": "ALIDOC", "extension": "adoc"},
+        )
+        doc = source.fetch(doc_meta)
+
+        assert "image://architecture-diagram.png" in doc.content
+        assert "展示系统架构" in doc.content
+        assert "image_metadata" in doc.meta.extra
+        assert "architecture-diagram.png" in doc.meta.extra["image_metadata"]
+
+    def test_fetch_without_image_description(self, monkeypatch):
+        from docpipe.sources.dingtalk import DingtalkSource
+
+        mock_client = MagicMock()
+        mock_client.read_document.return_value = "![img](https://example.com/img.png)"
+
+        monkeypatch.setattr(
+            "docpipe.sources.dingtalk._WikiClient",
+            lambda: mock_client,
+        )
+
+        source = DingtalkSource(space_id="test-space")
+        doc_meta = DocumentMeta(
+            id="test-node",
+            title="测试文档",
+            path="测试文档",
+            hash="",
+            extra={"contentType": "ALIDOC", "extension": "adoc"},
+        )
+        doc = source.fetch(doc_meta)
+
+        assert "https://example.com/img.png" in doc.content
+        assert "image_metadata" not in doc.meta.extra
+
+
+class TestEnvironmentVariableDefaults:
+    def test_dingtalk_source_uses_env_vars(self, monkeypatch):
+        from docpipe.sources.dingtalk import DingtalkSource
+
+        monkeypatch.setenv("IMAGE_DESCRIPTION_API_KEY", "env-key")
+        monkeypatch.setenv("IMAGE_DESCRIPTION_BASE_URL", "https://env.example.com/v1")
+        monkeypatch.setenv("IMAGE_DESCRIPTION_MODEL", "env-model")
+
+        mock_client = MagicMock()
+        monkeypatch.setattr(
+            "docpipe.sources.dingtalk._WikiClient",
+            lambda: mock_client,
+        )
+
+        source = DingtalkSource(
+            space_id="test-space",
+            image_description=True,
+        )
+
+        assert source._image_processor is not None
+        assert source._image_processor.vision_client.model == "env-model"
