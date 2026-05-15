@@ -78,12 +78,14 @@ class Pipeline:
         state_dir: Path,
         display: Display | None = None,
         type_resolver=None,
+        content_type_strategy: ContentTypeStrategy | None = None,
     ):
         self.source = source
         self.dest = dest
         self.state = StateManager(state_dir / f"{source.name}_{dest.name}_state.json")
         self._display = display or Display()
         self._type_resolver = type_resolver
+        self._content_type_strategy = content_type_strategy
 
     def _resolve_type(self, doc_meta):
         ext_raw = doc_meta.extra.get("extension", "")
@@ -107,8 +109,35 @@ class Pipeline:
                 self._display.result("skip", f"{doc_meta.path} (无变化)")
                 continue
 
-            # 类型规则过滤
-            if self._type_resolver:
+            # 类型策略过滤
+            if self._content_type_strategy:
+                # 第一级：ContentTypeStrategy
+                content_type = doc_meta.extra.get("contentType", "")
+                action = self._content_type_strategy.resolve(content_type)
+                if action is None or action == "skip":
+                    ct_label = content_type or "未知类型"
+                    self._display.result("skip", f"{doc_meta.path} [contentType={ct_label}, action={action or '无规则'}]")
+                    continue
+                if action in ("source", "download"):
+                    converter_name = None
+                elif action == "convert":
+                    # 第二级：TypeRuleResolver（仅 convert 动作）
+                    if self._type_resolver:
+                        converter_name = self._resolve_type(doc_meta)
+                        ext_info = doc_meta.extra.get("extension", "") or ""
+                        ext_label = f".{ext_info}" if ext_info else "未知扩展名"
+                        if converter_name is None:
+                            self._display.result("skip", f"{doc_meta.path} [contentType={content_type}, 无匹配 converter: {ext_label}]")
+                            continue
+                        if converter_name == "skip":
+                            self._display.result("skip", f"{doc_meta.path} [contentType={content_type}, converter 跳过: {ext_label}]")
+                            continue
+                        if converter_name == "source":
+                            converter_name = None
+                    else:
+                        converter_name = None
+            elif self._type_resolver:
+                # 向后兼容：无 ContentTypeStrategy 时走原有逻辑
                 converter_name = self._resolve_type(doc_meta)
                 ext_info = doc_meta.extra.get("extension", "") or ""
                 type_info = doc_meta.extra.get("contentType", "") or ""

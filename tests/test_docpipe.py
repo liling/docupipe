@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from docpipe.models import Document, DocumentMeta
-from docpipe.pipeline import Pipeline, StateManager, content_hash
+from docpipe.pipeline import Pipeline, StateManager, content_hash, ContentTypeStrategy
 from docpipe.sources.base import SourceBase
 from docpipe.destinations.base import DestinationBase
 from docpipe.converters.resolver import TypeRuleResolver
@@ -204,6 +204,92 @@ class TestPipeline:
         assert len(dest.written) == 0
         # 但状态应该已记录
         assert dest.written == []
+
+
+class TestPipelineContentTypeStrategy:
+    def test_skip_archives(self, tmp_path):
+        """ContentTypeStrategy 返回 skip 时跳过"""
+        docs = [_make_doc("1", "A", contentType="ARCHIVE")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"ARCHIVE": "skip", "DOCUMENT": "convert"})
+        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
+        pipeline.run()
+        assert len(dest.written) == 0
+
+    def test_no_rule_skips(self, tmp_path):
+        """ContentTypeStrategy 无规则时跳过"""
+        docs = [_make_doc("1", "A", contentType="OTHER")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
+        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
+        pipeline.run()
+        assert len(dest.written) == 0
+
+    def test_source_action_processes(self, tmp_path):
+        """ContentTypeStrategy 返回 source 时走 Source 原生处理"""
+        docs = [_make_doc("1", "A", contentType="ALIDOC")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"ALIDOC": "source"})
+        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
+        pipeline.run()
+        assert len(dest.written) == 1
+
+    def test_convert_with_resolver(self, tmp_path):
+        """convert 动作委托给 TypeRuleResolver 二次分发"""
+        docs = [_make_doc("1", "A", contentType="DOCUMENT", extension="pdf")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
+        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
+        pipeline = Pipeline(source, dest, tmp_path,
+                            content_type_strategy=strategy, type_resolver=resolver)
+        pipeline.run()
+        assert len(dest.written) == 1
+
+    def test_convert_no_converter_skips(self, tmp_path):
+        """convert 但无匹配 converter 时跳过"""
+        docs = [_make_doc("1", "A", contentType="DOCUMENT", extension="exe")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
+        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
+        pipeline = Pipeline(source, dest, tmp_path,
+                            content_type_strategy=strategy, type_resolver=resolver)
+        pipeline.run()
+        assert len(dest.written) == 0
+
+    def test_convert_without_resolver_processes(self, tmp_path):
+        """convert 但无 resolver 时仍处理（不转换）"""
+        docs = [_make_doc("1", "A", contentType="DOCUMENT")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
+        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
+        pipeline.run()
+        assert len(dest.written) == 1
+
+    def test_download_action_processes(self, tmp_path):
+        """download 动作正常处理"""
+        docs = [_make_doc("1", "A", contentType="IMAGE")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        strategy = ContentTypeStrategy({"IMAGE": "download"})
+        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
+        pipeline.run()
+        assert len(dest.written) == 1
+
+    def test_no_strategy_uses_old_resolver(self, tmp_path):
+        """无 ContentTypeStrategy 时走原有 TypeRuleResolver 逻辑（向后兼容）"""
+        docs = [_make_doc("1", "A", extension="pdf")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
+        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
+        pipeline.run()
+        assert len(dest.written) == 1
 
 
 class TestRegistration:
