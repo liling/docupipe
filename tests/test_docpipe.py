@@ -351,6 +351,10 @@ class TestRegistration:
         from docpipe.destinations import DESTINATIONS
         assert "hindsight" in DESTINATIONS
 
+    def test_localdrive_registered(self):
+        from docpipe.destinations import DESTINATIONS
+        assert "localdrive" in DESTINATIONS
+
     def test_get_source_unknown_raises(self):
         from docpipe.sources import get_source
         with pytest.raises(ValueError, match="未知的 source"):
@@ -447,6 +451,32 @@ class TestLocalDriveDestination:
 
         file_path = output_dir / "S" / "A.md"
         assert file_path.read_text(encoding="utf-8") == "new content"
+
+    def test_remove_deletes_file_and_sidecar(self, tmp_path):
+        from docpipe.destinations.localdrive import LocalDriveDestination
+
+        output_dir = tmp_path / "output"
+        dest = LocalDriveDestination(output_dir=str(output_dir))
+        doc = Document(
+            meta=DocumentMeta(id="1", title="A", path="A", hash="h1", extra={"space_name": "S"}),
+            content="hello",
+            content_type="markdown",
+        )
+
+        file_path = dest.write(doc)
+        assert Path(file_path).exists()
+
+        dest.remove_by_path(file_path)
+        assert not Path(file_path).exists()
+        assert not Path(file_path + ".json").exists()
+
+    def test_remove_nonexistent_file_no_error(self, tmp_path):
+        from docpipe.destinations.localdrive import LocalDriveDestination
+
+        output_dir = tmp_path / "output"
+        dest = LocalDriveDestination(output_dir=str(output_dir))
+        # 不应抛异常
+        dest.remove_by_path(str(output_dir / "nonexistent.md"))
 
 
 class TestLocalSource:
