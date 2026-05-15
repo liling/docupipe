@@ -107,7 +107,7 @@ class DingtalkSource(SourceBase):
         logger.info("列出文档: 知识库=%s, 文件夹=%s", self._space_name, self._folder_id or "(根目录)")
         nodes = self._collect_nodes(self._space_id, self._folder_id)
         result = []
-        _UNSUPPORTED_EXTENSIONS = {"axls", "amindmap", "aform", "abitable"}
+        _UNSUPPORTED_EXTENSIONS = {"axls", "amindmap", "aform", "abitable", "able"}
         for node in nodes:
             node_type = node.get("nodeType", "")
             if node_type == "folder":
@@ -150,7 +150,7 @@ class DingtalkSource(SourceBase):
                 extra["extension"] = extension
                 logger.debug("doc info 补全 extension: %s → %s", doc_meta.title, extension or "(空)")
 
-            _UNSUPPORTED = {"axls", "amindmap", "aform", "abitable"}
+            _UNSUPPORTED = {"axls", "amindmap", "aform", "abitable", "able"}
             if extension in _UNSUPPORTED:
                 from docpipe.models import SkipDocument
                 raise SkipDocument(f"不支持的钉钉类型: extension={extension}")
