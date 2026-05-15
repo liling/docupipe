@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 import threading
 import time
@@ -39,6 +40,7 @@ class Display:
         self._progress_task_id = None
         self._lock = threading.Lock()
         self._current_tasks: list[str] = []
+        self._saved_log_level: int | None = None
 
         self.total: int = 0
         self.completed: int = 0
@@ -76,9 +78,17 @@ class Display:
             transient=False,
         )
         self._live.start()
+        # Live 模式下抑制 INFO 日志，避免和面板输出交叉
+        docpipe_logger = logging.getLogger("docpipe")
+        self._saved_log_level = docpipe_logger.level
+        docpipe_logger.setLevel(logging.WARNING)
 
     def stop(self) -> None:
         if self._live:
+            # 恢复日志级别
+            if self._saved_log_level is not None:
+                logging.getLogger("docpipe").setLevel(self._saved_log_level)
+                self._saved_log_level = None
             self._live.stop()
             self._live = None
 
