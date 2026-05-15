@@ -4,12 +4,14 @@
 
 用 `LocalDriveSource` 替换现有 `LocalSource`，支持从本地文件夹读取所有类型文件。现有 `local.py` 仅扫描 markdown 文件，新实现扫描所有文件并通过 pipeline 已有的 converter 系统处理格式转换。
 
+注册名为 `localdrive`，与 `LocalDriveDestination` 保持一致。额外注册 `local` 别名向后兼容。
+
 ## 配置
 
 ```yaml
 pipelines:
   - name: docs-to-hindsight
-    source: local
+    source: localdrive
     destination: hindsight
     source_config:
       input_dir: ./docs
@@ -17,10 +19,10 @@ pipelines:
       exclude: [".git/**", "*.tmp"]
 ```
 
-CLI 用法保持不变：
+CLI 用法：
 
 ```bash
-docpipe run --source local --dest hindsight --input-dir ./docs
+docpipe run --source localdrive --dest hindsight --input-dir ./docs
 ```
 
 ## 过滤规则
@@ -90,8 +92,9 @@ converter 需要文件路径，通过 `extra["absolute_path"]` 传递。
 
 | 文件 | 变更 |
 |------|------|
-| `docpipe/sources/local.py` | 重写为 `LocalDriveSource` |
-| `docpipe/cli.py` | `_extract_source_config` 增加 `include`/`exclude` 参数透传 |
+| `docpipe/sources/localdrive.py` | 新建 `LocalDriveSource`，注册为 `localdrive` + `local` 别名 |
+| `docpipe/sources/local.py` | 删除（功能已迁移到 localdrive.py） |
+| `docpipe/cli.py` | `_extract_source_config` 增加 `localdrive` 分支，透传 `include`/`exclude` |
 | `tests/test_docpipe.py` | 更新 `LocalSource` 相关测试，增加过滤规则测试 |
 
 ## 测试
