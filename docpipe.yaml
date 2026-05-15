@@ -1,4 +1,11 @@
-type_rules:
+content_type_rules:
+  DOCUMENT: convert
+  ALIDOC: source
+  ARCHIVE: skip
+  IMAGE: skip
+  OTHER: skip
+
+converters:
   extensions:
     ".pdf": markitdown
     ".docx": markitdown
@@ -17,11 +24,6 @@ type_rules:
     ".rtf": markitdown
     ".odt": markitdown
     ".ods": markitdown
-  mime_types:
-    ALIDOC: source
-    AXLS: skip
-    AMINDMAP: skip
-    AFORM: skip
 
 pipelines:
 

@@ -105,15 +105,16 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
     from docpipe.converters.resolver import TypeRuleResolver
     from docpipe.destinations import get_destination
     from docpipe.display import Display
-    from docpipe.pipeline import Pipeline
+    from docpipe.pipeline import ContentTypeStrategy, Pipeline
     from docpipe.sources import get_source
 
     config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
 
-    type_rules = config.get("type_rules", {})
+    # 兼容旧配置：converters 优先，fallback 到 type_rules
+    converters = config.get("converters", config.get("type_rules", {}))
     resolver = TypeRuleResolver(
-        extension_rules=type_rules.get("extensions", {}),
-        mime_rules=type_rules.get("mime_types", {}),
+        extension_rules=converters.get("extensions", {}),
+        mime_rules=converters.get("mime_types", {}),
     )
 
     pipelines = config.get("pipelines", [])
@@ -125,6 +126,10 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
             raise SystemExit(1)
 
     for pipe_config in pipelines:
+        # content_type_rules: pipeline 级别优先，fallback 到全局
+        ct_rules = pipe_config.get("content_type_rules", config.get("content_type_rules"))
+        strategy = ContentTypeStrategy(ct_rules) if ct_rules else None
+
         source_name = pipe_config["source"]
         dest_name = pipe_config["destination"]
         options = pipe_config.get("options", {})
@@ -139,7 +144,9 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
 
         try:
             pipeline = Pipeline(source, dest, ctx.obj["state_dir"],
-                                display=Display(), type_resolver=resolver)
+                                display=Display(),
+                                type_resolver=resolver,
+                                content_type_strategy=strategy)
             pipeline.run(
                 resume=resume or options.get("resume", False),
                 sync=sync_mode or options.get("sync", False),
