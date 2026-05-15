@@ -7,6 +7,7 @@ from pathlib import Path
 
 from docpipe.destinations.base import DestinationBase
 from docpipe.display import Display
+from docpipe.models import SkipDocument
 from docpipe.sources.base import SourceBase
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,9 @@ class Pipeline:
                     self._display.result("success", doc_meta.path)
 
                 self.state.mark_done(doc_meta.id, doc.meta.hash)
+            except SkipDocument as e:
+                logger.info("跳过文档: %s - %s", doc_meta.path, e)
+                self._display.result("skip", f"{doc_meta.path} ({e})")
             except Exception as e:
                 logger.error("文档处理失败: %s - %s", doc_meta.path, e)
                 self._display.result("error", f"{doc_meta.path}: {e}")

@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 
+class SkipDocument(Exception):
+    """Source 发出此异常表示该文档应跳过"""
+
+
 @dataclass
 class DocumentMeta:
     id: str

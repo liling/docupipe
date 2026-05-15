@@ -72,6 +72,10 @@ class _WikiClient:
     def get_space_info(self, space_id: str) -> dict:
         return self._run_dws(["wiki", "space", "get", "--id", space_id])
 
+    def get_node_info(self, node_id: str) -> dict:
+        data = self._run_dws(["doc", "info", "--node", node_id])
+        return data if isinstance(data, dict) else {}
+
 
 @register_source("dingtalk")
 class DingtalkSource(SourceBase):
@@ -134,14 +138,23 @@ class DingtalkSource(SourceBase):
         extension = doc_meta.extra.get("extension", "")
         node_id = doc_meta.id
 
-        logger.info("获取文档: id=%s, title=%s, type=%s", doc_meta.id, doc_meta.title, content_type)
+        logger.info("获取文档: id=%s, title=%s, type=%s, ext=%s", doc_meta.id, doc_meta.title, content_type, extension or "(空)")
 
         extra = dict(doc_meta.extra)
 
         if content_type == "ALIDOC" or extension == "adoc":
-            # 防御：部分文件虽标记为 ALIDOC 但实际是表格等不可读类型
-            if extension in ("axls", "amindmap", "aform"):
-                raise ValueError(f"不支持的钉钉表格/表单类型: extension={extension}")
+            # doc list 不返回 extension，用 doc info 补全
+            if not extension:
+                info = self._client.get_node_info(node_id)
+                extension = info.get("extension", "")
+                extra["extension"] = extension
+                logger.debug("doc info 补全 extension: %s → %s", doc_meta.title, extension or "(空)")
+
+            _UNSUPPORTED = {"axls", "amindmap", "aform", "abitable"}
+            if extension in _UNSUPPORTED:
+                from docpipe.models import SkipDocument
+                raise SkipDocument(f"不支持的钉钉类型: extension={extension}")
+
             markdown = self._client.read_document(node_id)
             markdown = self._clean_html_tags(markdown)
         else:
