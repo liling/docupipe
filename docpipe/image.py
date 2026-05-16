@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import requests as req
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 if TYPE_CHECKING:
     from docpipe.models import FileItem
@@ -30,6 +30,7 @@ class OpenAIVisionClient:
         timeout: int = 30,
     ):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.timeout = timeout
 
@@ -44,6 +45,37 @@ class OpenAIVisionClient:
         )
 
         response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{b64}"},
+                        },
+                    ],
+                }
+            ],
+            max_tokens=300,
+            timeout=self.timeout,
+        )
+
+        raw = response.choices[0].message.content
+        return self._parse_response(raw)
+
+    async def a_describe(self, image_bytes: bytes, context: str) -> tuple[str, str]:
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        prompt = (
+            f"这是一篇文档《{context}》中的图片。\n\n"
+            "请完成两个任务：\n"
+            "1. 生成一个简短的英文文件名（3-5个单词，用连字符连接，如 \"system-architecture-diagram\"）\n"
+            "2. 用一句话描述图片内容（中文，适合在文档中作为图片说明）\n\n"
+            '请以 JSON 格式返回：\n{"filename": "...", "description": "..."}'
+        )
+
+        response = await self.async_client.chat.completions.create(
             model=self.model,
             messages=[
                 {

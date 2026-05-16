@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import MagicMock
 
@@ -68,6 +69,35 @@ class TestOpenAIVisionClient:
 
         assert filename  # 应该有降级值
         assert description  # 应该有降级值
+
+    def test_a_describe_returns_filename_and_description(self, monkeypatch):
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            "filename": "async-flow-diagram",
+            "description": "异步处理流程图",
+        })
+
+        async def mock_create(**kwargs):
+            return mock_response
+
+        mock_async_client = MagicMock()
+        mock_async_client.chat.completions.create = mock_create
+
+        monkeypatch.setattr(
+            "docpipe.image.AsyncOpenAI",
+            lambda **kwargs: mock_async_client,
+        )
+
+        client = OpenAIVisionClient(
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+            model="gpt-4o",
+        )
+        filename, description = asyncio.run(client.a_describe(b"fake-image-bytes", "测试文档"))
+
+        assert filename == "async-flow-diagram"
+        assert description == "异步处理流程图"
 
 
 class _FakeVisionClient:
