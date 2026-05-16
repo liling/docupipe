@@ -23,6 +23,15 @@ docupipe 为解决这些问题提供了一个通用的、可扩展的框架。
 - **格式转换**：集成 markitdown、MinerU 等转换引擎
 - **智能处理**：支持图片描述等 AI 处理步骤
 
+## 工作流程
+
+```mermaid
+flowchart LR
+    A[钉钉文档] --> B[格式转换<br/>markitdown/mineru]
+    B --> C[图片描述<br/>AI 生成描述]
+    C --> D[HindSight Memory]
+```
+
 ## 安装
 
 ### 通过 pip 安装（推荐）
