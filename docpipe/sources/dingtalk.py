@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-from docpipe.models import Document, DocumentMeta, SkipDocument
+from docpipe.models import Bundle, BundleMeta, FileItem, SkipBundle
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class DingtalkSource(SourceBase):
         self._client = _WikiClient()
         self._space_name = ""
 
-    def list_documents(self) -> list[DocumentMeta]:
+    def list(self) -> list[BundleMeta]:
         if not self._space_name:
             try:
                 space_info = self._client.get_space_info(self._space_id)
@@ -128,7 +128,7 @@ class DingtalkSource(SourceBase):
                 extension = info.get("extension", "")
                 logger.debug("doc info 补全 extension: %s → %s", title, extension or "(空)")
 
-            result.append(DocumentMeta(
+            result.append(BundleMeta(
                 id=node_id,
                 title=title,
                 path=node.get("_path", ""),
@@ -144,45 +144,57 @@ class DingtalkSource(SourceBase):
         logger.info("列出文档完成: 共 %d 个文档", len(result))
         return result
 
-    def fetch(self, doc_meta: DocumentMeta) -> Document:
-        content_type = doc_meta.extra.get("contentType", "")
-        extension = doc_meta.extra.get("extension", "")
-        node_id = doc_meta.id
+    def fetch(self, meta: BundleMeta) -> Bundle:
+        content_type = meta.extra.get("contentType", "")
+        extension = meta.extra.get("extension", "")
+        node_id = meta.id
 
-        logger.info("获取文档: id=%s, title=%s, type=%s, ext=%s", doc_meta.id, doc_meta.title, content_type, extension or "(空)")
+        logger.info("获取文档: id=%s, title=%s, type=%s, ext=%s", meta.id, meta.title, content_type, extension or "(空)")
 
-        extra = dict(doc_meta.extra)
+        context = dict(meta.extra)
 
         if content_type == "ALIDOC" or extension == "adoc":
             # doc list 不返回 extension，用 doc info 补全
             if not extension:
                 info = self._client.get_node_info(node_id)
                 extension = info.get("extension", "")
-                extra["extension"] = extension
-                logger.debug("doc info 补全 extension: %s → %s", doc_meta.title, extension or "(空)")
+                context["extension"] = extension
+                logger.debug("doc info 补全 extension: %s → %s", meta.title, extension or "(空)")
 
             if extension in _ALIDOC_UNSUPPORTED:
-                raise SkipDocument(f"ALIDOC 子类型暂不支持: extension={extension}")
+                raise SkipBundle(f"ALIDOC 子类型暂不支持: extension={extension}")
 
             markdown = self._client.read_document(node_id)
             markdown = self._clean_html_tags(markdown)
-        else:
-            tmp_path = self._download_to_temp(node_id, extension)
-            extra["_temp_file"] = str(tmp_path)
-            extra["_needs_conversion"] = True
-            markdown = ""
 
-        return Document(
-            meta=DocumentMeta(
-                id=doc_meta.id,
-                title=doc_meta.title,
-                path=doc_meta.path,
-                hash="",
-                extra=extra,
-            ),
-            content=markdown,
-            content_type="markdown",
-        )
+            return Bundle(
+                files=[FileItem(
+                    name=f"{meta.title}.md",
+                    content=markdown,
+                    content_type="text/markdown",
+                    role="main",
+                )],
+                context=context,
+            )
+        else:
+            logger.debug("下载文件内容: node_id=%s, extension=%s", node_id, extension)
+            download_url = self._client.download_file(node_id)
+            resp = requests.get(download_url, timeout=120)
+            resp.raise_for_status()
+            content = resp.content
+            logger.debug("文件下载成功: node_id=%s, 大小=%d bytes", node_id, len(content))
+
+            context["_needs_conversion"] = True
+            filename = f"{meta.title}.{extension}" if extension else meta.title
+            return Bundle(
+                files=[FileItem(
+                    name=filename,
+                    content=content,
+                    content_type=extension,
+                    role="main",
+                )],
+                context=context,
+            )
 
     def _resolve_folder_path(self, path: str) -> str | None:
         """将文件夹路径（如 '产品规划物料/解决方案'）解析为 folder ID"""
