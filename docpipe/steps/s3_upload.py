@@ -61,11 +61,14 @@ class S3UploadStep(PipelineStep):
             key = f"{self._prefix}/{doc_id}/{att.name}"
             url = f"{self._url_prefix}/{key}"
             try:
-                self._client.put_object(
-                    Bucket=self._bucket,
-                    Key=key,
-                    Body=att.content,
-                )
+                put_args = {
+                    "Bucket": self._bucket,
+                    "Key": key,
+                    "Body": att.content,
+                }
+                if att.content_type:
+                    put_args["ContentType"] = att.content_type
+                self._client.put_object(**put_args)
             except Exception as e:
                 logger.warning("s3_upload: 上传 %s 失败: %s", att.name, e)
                 continue

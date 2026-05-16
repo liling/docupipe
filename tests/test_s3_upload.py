@@ -75,6 +75,7 @@ class TestS3UploadStepUpload:
             Bucket="test-bucket",
             Key="attachments/doc1/photo.png",
             Body=b"\x89PNG",
+            ContentType="image/png",
         )
         assert len(result.files) == 1
         assert result.files[0].role == "main"
