@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
     "click>=8.1.0",
-    "markitdown>=0.1.0",
+    "markitdown[all]>=0.1.0",
     "hindsight-client>=0.1.0",
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
