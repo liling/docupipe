@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from docpipe.models import Document, DocumentMeta, SkipDocument
+from docpipe.models import Document, DocumentMeta
 from docpipe.sources import register_source
 from docpipe.sources.base import SourceBase
 
@@ -28,14 +28,16 @@ class LocalDriveSource(SourceBase):
         for f in sorted(self._input_dir.rglob("*")):
             if not f.is_file():
                 continue
+
+            relative = f.relative_to(self._input_dir)
+
             # 跳过隐藏文件和隐藏目录中的文件
-            if any(part.startswith(".") for part in f.relative_to(self._input_dir).parts):
+            if any(part.startswith(".") for part in relative.parts):
                 continue
             # 跳过无扩展名文件
             if not f.suffix:
                 continue
 
-            relative = f.relative_to(self._input_dir)
             rel_str = str(relative)
 
             if not self._matches_filters(rel_str):
