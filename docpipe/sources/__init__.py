@@ -24,4 +24,4 @@ def get_source(name: str) -> type[SourceBase]:
 
 # 自动注册内置 source
 import docpipe.sources.dingtalk  # noqa: F401, E402
-import docpipe.sources.local  # noqa: F401, E402
+import docpipe.sources.localdrive  # noqa: F401, E402

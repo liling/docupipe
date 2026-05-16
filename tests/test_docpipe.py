@@ -479,32 +479,59 @@ class TestLocalDriveDestination:
         dest.remove_by_path(str(output_dir / "nonexistent.md"))
 
 
-class TestLocalSource:
-    def test_list_documents(self, tmp_path):
+class TestLocalDriveSource:
+    def test_list_all_file_types(self, tmp_path):
         (tmp_path / "a.md").write_text("hello a")
-        (tmp_path / "b.md").write_text("hello b")
-        (tmp_path / "c.txt").write_text("skip")
+        (tmp_path / "b.pdf").write_bytes(b"%PDF-1.4 fake")
+        (tmp_path / "c.docx").write_bytes(b"PK fake docx")
+        (tmp_path / "d.txt").write_text("plain text")
 
-        from docpipe.sources.local import LocalSource
-        source = LocalSource(input_dir=str(tmp_path))
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
         docs = source.list_documents()
-        assert len(docs) == 2
-        assert docs[0].title == "a"
-        assert docs[1].title == "b"
+        titles = {d.title for d in docs}
+        assert titles == {"a", "b", "c", "d"}
 
-    def test_fetch(self, tmp_path):
-        (tmp_path / "test.md").write_text("content here")
+    def test_list_skips_hidden_dirs_and_files(self, tmp_path):
+        (tmp_path / "visible.md").write_text("seen")
+        hidden_dir = tmp_path / ".hidden_dir"
+        hidden_dir.mkdir()
+        (hidden_dir / "secret.md").write_text("hidden dir file")
+        (tmp_path / ".hidden.md").write_text("hidden file")
 
-        from docpipe.sources.local import LocalSource
-        source = LocalSource(input_dir=str(tmp_path))
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
         docs = source.list_documents()
-        doc = source.fetch(docs[0])
-        assert doc.content == "content here"
+        assert len(docs) == 1
+        assert docs[0].title == "visible"
+
+    def test_list_skips_no_extension(self, tmp_path):
+        (tmp_path / "README").write_text("no extension")
+        (tmp_path / "guide.md").write_text("has extension")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        docs = source.list_documents()
+        assert len(docs) == 1
+        assert docs[0].title == "guide"
+
+    def test_list_recursive(self, tmp_path):
+        sub = tmp_path / "sub" / "dir"
+        sub.mkdir(parents=True)
+        (tmp_path / "root.md").write_text("root")
+        (sub / "deep.md").write_text("deep")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        docs = source.list_documents()
+        paths = {d.path for d in docs}
+        assert "root.md" in paths
+        assert str(Path("sub") / "dir" / "deep.md") in paths
 
     def test_invalid_dir_raises(self):
-        from docpipe.sources.local import LocalSource
+        from docpipe.sources.localdrive import LocalDriveSource
         with pytest.raises(ValueError, match="目录不存在"):
-            LocalSource(input_dir="/nonexistent/path")
+            LocalDriveSource(input_dir="/nonexistent/path")
 
 
 class TestPipelineTypeRules:
