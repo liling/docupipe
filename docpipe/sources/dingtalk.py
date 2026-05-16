@@ -82,24 +82,14 @@ class _WikiClient:
 
 @register_source("dingtalk")
 class DingtalkSource(SourceBase):
-    def __init__(self, space_id: str, folder_id: str | None = None, folders: list[str] | None = None, **kwargs):
+    def __init__(self, space_id: str, folder_id: str | None = None, folders: list[str] | None = None,
+                 include_types: list[str] | None = None, **kwargs):
         self._space_id = space_id
         self._folder_id = folder_id
         self._folders = folders
+        self._include_types = set(include_types) if include_types else None
         self._client = _WikiClient()
         self._space_name = ""
-        self._nodes_cache: list[dict] | None = None
-
-        self._image_processor = None
-        if kwargs.get("image_description"):
-            import os
-            from docpipe.image import ImagePostProcessor, OpenAIVisionClient
-            vision_client = OpenAIVisionClient(
-                api_key=kwargs.get("image_description_api_key", "") or os.environ.get("IMAGE_DESCRIPTION_API_KEY", ""),
-                base_url=kwargs.get("image_description_base_url", "") or os.environ.get("IMAGE_DESCRIPTION_BASE_URL", ""),
-                model=kwargs.get("image_description_model", "") or os.environ.get("IMAGE_DESCRIPTION_MODEL", "gpt-4o"),
-            )
-            self._image_processor = ImagePostProcessor(vision_client)
 
     def list_documents(self) -> list[DocumentMeta]:
         if not self._space_name:
@@ -128,6 +118,8 @@ class DingtalkSource(SourceBase):
             node_id = node.get("nodeId", "")
             title = node.get("name", "未命名")
             content_type = node.get("contentType", "")
+            if self._include_types is not None and content_type not in self._include_types:
+                continue
             extension = node.get("extension", "")
 
             # doc list 不返回 DOCUMENT 类型的扩展名，用 doc info 补全
@@ -179,13 +171,6 @@ class DingtalkSource(SourceBase):
             extra["_temp_file"] = str(tmp_path)
             extra["_needs_conversion"] = True
             markdown = ""
-
-        if markdown and self._image_processor:
-            source_context = f"{doc_meta.title} - {doc_meta.path}"
-            logger.debug("处理文档中的图片: %s", doc_meta.title)
-            markdown, image_metadata = self._image_processor.process(markdown, source_context)
-            extra["image_metadata"] = image_metadata
-            logger.info("图片处理完成: %s, 处理了 %d 张图片", doc_meta.title, len(image_metadata) if image_metadata else 0)
 
         return Document(
             meta=DocumentMeta(
