@@ -4,52 +4,60 @@ import hashlib
 import json
 import time
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from docpipe.models import Document, DocumentMeta
-from docpipe.pipeline import Pipeline, StateManager, content_hash, ContentTypeStrategy
+from docpipe.models import Bundle, BundleMeta, FileItem, SkipBundle
+from docpipe.pipeline import Pipeline, StateManager, content_hash, bundle_hash
 from docpipe.sources.base import SourceBase
 from docpipe.destinations.base import DestinationBase
-from docpipe.converters.resolver import TypeRuleResolver
 
 
 class FakeSource(SourceBase):
     name = "fake"
 
-    def __init__(self, docs: list[Document] | None = None, **kwargs):
-        self._docs = docs or []
+    def __init__(self, bundles: list[Bundle] | None = None, **kwargs):
+        self._bundles = bundles or []
 
-    def list_documents(self) -> list[DocumentMeta]:
-        return [d.meta for d in self._docs]
+    def list(self) -> list[BundleMeta]:
+        return [
+            BundleMeta(
+                id=b.context.get("id", ""),
+                title=b.context.get("title", ""),
+                path=b.context.get("path", ""),
+                hash=bundle_hash(b),
+                extra=b.context.get("extra", {}),
+            )
+            for b in self._bundles
+        ]
 
-    def fetch(self, doc_meta: DocumentMeta) -> Document:
-        for d in self._docs:
-            if d.meta.id == doc_meta.id:
-                return d
-        raise ValueError(f"Document not found: {doc_meta.id}")
+    def fetch(self, meta: BundleMeta) -> Bundle:
+        for b in self._bundles:
+            if b.context.get("id") == meta.id:
+                return b
+        raise ValueError(f"Bundle not found: {meta.id}")
 
 
 class FakeDestination(DestinationBase):
     name = "fake"
 
     def __init__(self, **kwargs):
-        self.written: list[Document] = []
+        self.written: list[Bundle] = []
         self.removed: list[str] = []
-
-    def write(self, doc: Document) -> str:
-        self.written.append(doc)
-        return doc.meta.id
 
     def remove(self, doc_id: str) -> None:
         self.removed.append(doc_id)
 
+    def write(self, bundle: Bundle) -> str:
+        self.written.append(bundle)
+        return bundle.context.get("id", "")
 
-def _make_doc(id: str, title: str, content: str = "hello", **extra) -> Document:
-    return Document(
-        meta=DocumentMeta(id=id, title=title, path=f"{title}.md", hash="", extra=extra),
-        content=content,
-        content_type="markdown",
+
+def _make_bundle(id: str, title: str, content: str = "hello", path: str = "", **extra) -> Bundle:
+    return Bundle(
+        files=[FileItem(name=f"{title}.md", content=content, content_type="text/markdown", role="main")],
+        context={"id": id, "title": title, "path": path or f"{title}.md", **extra},
     )
 
 
@@ -114,52 +122,45 @@ class TestContentHash:
         assert h == expected
 
 
-class TestContentTypeStrategy:
-    def test_resolve_known_type(self):
-        from docpipe.pipeline import ContentTypeStrategy
-        strategy = ContentTypeStrategy({"DOCUMENT": "convert", "ALIDOC": "source"})
-        assert strategy.resolve("DOCUMENT") == "convert"
-        assert strategy.resolve("ALIDOC") == "source"
+class TestBundleHash:
+    def test_bundle_hash_from_main_content(self):
+        bundle = Bundle(
+            files=[FileItem(name="test.md", content="# Hello\n\nWorld", content_type="text/markdown", role="main")],
+            context={},
+        )
+        h = bundle_hash(bundle)
+        expected = hashlib.sha256(b"# Hello\n\nWorld").hexdigest()
+        assert h == expected
 
-    def test_resolve_unknown_returns_none(self):
-        from docpipe.pipeline import ContentTypeStrategy
-        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
-        assert strategy.resolve("UNKNOWN") is None
+    def test_bundle_hash_empty_bundle(self):
+        bundle = Bundle(files=[], context={})
+        assert bundle_hash(bundle) == ""
 
-    def test_empty_rules(self):
-        from docpipe.pipeline import ContentTypeStrategy
-        strategy = ContentTypeStrategy()
-        assert strategy.resolve("DOCUMENT") is None
-
-    def test_all_actions(self):
-        from docpipe.pipeline import ContentTypeStrategy
-        strategy = ContentTypeStrategy({
-            "DOCUMENT": "convert",
-            "ALIDOC": "source",
-            "ARCHIVE": "skip",
-            "IMAGE": "download",
-        })
-        assert strategy.resolve("DOCUMENT") == "convert"
-        assert strategy.resolve("ALIDOC") == "source"
-        assert strategy.resolve("ARCHIVE") == "skip"
-        assert strategy.resolve("IMAGE") == "download"
+    def test_bundle_hash_bytes_content(self):
+        bundle = Bundle(
+            files=[FileItem(name="test.pdf", content=b"binary data", content_type="application/pdf", role="main")],
+            context={},
+        )
+        h = bundle_hash(bundle)
+        expected = hashlib.sha256(b"binary data").hexdigest()
+        assert h == expected
 
 
 class TestPipeline:
     def test_run_writes_all(self, tmp_path):
-        docs = [_make_doc("1", "A"), _make_doc("2", "B")]
-        source = FakeSource(docs)
+        bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
+        source = FakeSource(bundles)
         dest = FakeDestination()
         pipeline = Pipeline(source, dest, tmp_path)
         pipeline.run()
 
         assert len(dest.written) == 2
-        assert dest.written[0].meta.title == "A"
-        assert dest.written[1].meta.title == "B"
+        assert dest.written[0].context["title"] == "A"
+        assert dest.written[1].context["title"] == "B"
 
     def test_run_resume_skips_processed(self, tmp_path):
-        doc = _make_doc("1", "A")
-        source = FakeSource([doc])
+        bundle = _make_bundle("1", "A")
+        source = FakeSource([bundle])
         dest = FakeDestination()
 
         # 先跑一次
@@ -174,10 +175,8 @@ class TestPipeline:
         assert len(dest2.written) == 0
 
     def test_run_sync_skips_unchanged(self, tmp_path):
-        doc = _make_doc("1", "A", content="hello")
-        # 预设 hash
-        doc.meta.hash = content_hash("hello")
-        source = FakeSource([doc])
+        bundle = _make_bundle("1", "A", content="hello")
+        source = FakeSource([bundle])
         dest = FakeDestination()
 
         # 先跑一次，记录 hash
@@ -193,15 +192,15 @@ class TestPipeline:
 
     def test_run_sync_removes_missing(self, tmp_path):
         # 第一次：两个文档
-        docs1 = [_make_doc("1", "A"), _make_doc("2", "B")]
-        source1 = FakeSource(docs1)
+        bundles1 = [_make_bundle("1", "A"), _make_bundle("2", "B")]
+        source1 = FakeSource(bundles1)
         dest = FakeDestination()
         pipeline1 = Pipeline(source1, dest, tmp_path)
         pipeline1.run()
 
         # 第二次：只有一个文档，另一个应该被移除
-        docs2 = [_make_doc("1", "A")]
-        source2 = FakeSource(docs2)
+        bundles2 = [_make_bundle("1", "A")]
+        source2 = FakeSource(bundles2)
         dest2 = FakeDestination()
         pipeline2 = Pipeline(source2, dest2, tmp_path)
         pipeline2.run(sync=True)
@@ -209,8 +208,8 @@ class TestPipeline:
         assert dest2.removed == ["2"]
 
     def test_run_dry_run(self, tmp_path):
-        doc = _make_doc("1", "A")
-        source = FakeSource([doc])
+        bundle = _make_bundle("1", "A")
+        source = FakeSource([bundle])
         dest = FakeDestination()
         pipeline = Pipeline(source, dest, tmp_path)
         pipeline.run(dry_run=True)
@@ -221,8 +220,8 @@ class TestPipeline:
 
     def test_dry_run_sync_no_state_mutation(self, tmp_path):
         """dry_run + sync 不应修改状态，连续执行结果一致"""
-        doc = _make_doc("1", "A")
-        source = FakeSource([doc])
+        bundle = _make_bundle("1", "A")
+        source = FakeSource([bundle])
         dest = FakeDestination()
         pipeline = Pipeline(source, dest, tmp_path)
 
@@ -240,8 +239,8 @@ class TestPipeline:
 
     def test_dry_run_resume_idempotent(self, tmp_path):
         """dry_run + resume 连续执行，不应因状态累积改变行为"""
-        docs = [_make_doc("1", "A"), _make_doc("2", "B")]
-        source = FakeSource(docs)
+        bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
+        source = FakeSource(bundles)
         dest = FakeDestination()
         pipeline = Pipeline(source, dest, tmp_path)
 
@@ -256,115 +255,29 @@ class TestPipeline:
 
     def test_run_with_steps(self, tmp_path):
         """steps 模式下 pipeline 执行 steps"""
-        docs = [_make_doc("1", "A", content="hello")]
-        source = FakeSource(docs)
+        bundles = [_make_bundle("1", "A", content="hello")]
+        source = FakeSource(bundles)
         dest = FakeDestination()
 
         from docpipe.steps.base import PipelineStep
 
         class UpperStep(PipelineStep):
             name = "upper"
-            def process(self, doc):
-                doc.content = doc.content.upper()
-                return doc
+            def process(self, bundle):
+                bundle.main.content = bundle.main.content.upper()
+                return bundle
 
         pipeline = Pipeline(source, dest, tmp_path, steps=[UpperStep()])
         pipeline.run()
         assert len(dest.written) == 1
-        assert dest.written[0].content == "HELLO"
+        assert dest.written[0].main.content == "HELLO"
 
     def test_run_with_empty_steps_processes_all(self, tmp_path):
         """空 steps 列表等价于无处理"""
-        docs = [_make_doc("1", "A")]
-        source = FakeSource(docs)
+        bundles = [_make_bundle("1", "A")]
+        source = FakeSource(bundles)
         dest = FakeDestination()
         pipeline = Pipeline(source, dest, tmp_path, steps=[])
-        pipeline.run()
-        assert len(dest.written) == 1
-
-
-class TestPipelineContentTypeStrategy:
-    def test_skip_archives(self, tmp_path):
-        """ContentTypeStrategy 返回 skip 时跳过"""
-        docs = [_make_doc("1", "A", contentType="ARCHIVE")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"ARCHIVE": "skip", "DOCUMENT": "convert"})
-        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
-        pipeline.run()
-        assert len(dest.written) == 0
-
-    def test_no_rule_skips(self, tmp_path):
-        """ContentTypeStrategy 无规则时跳过"""
-        docs = [_make_doc("1", "A", contentType="OTHER")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
-        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
-        pipeline.run()
-        assert len(dest.written) == 0
-
-    def test_source_action_processes(self, tmp_path):
-        """ContentTypeStrategy 返回 source 时走 Source 原生处理"""
-        docs = [_make_doc("1", "A", contentType="ALIDOC")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"ALIDOC": "source"})
-        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
-        pipeline.run()
-        assert len(dest.written) == 1
-
-    def test_convert_with_resolver(self, tmp_path):
-        """convert 动作委托给 TypeRuleResolver 二次分发"""
-        docs = [_make_doc("1", "A", contentType="DOCUMENT", extension="pdf")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
-        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
-        pipeline = Pipeline(source, dest, tmp_path,
-                            content_type_strategy=strategy, type_resolver=resolver)
-        pipeline.run()
-        assert len(dest.written) == 1
-
-    def test_convert_no_converter_processes(self, tmp_path):
-        """convert 但无匹配 converter 时仍处理（交给 Source）"""
-        docs = [_make_doc("1", "A", contentType="DOCUMENT", extension="exe")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
-        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
-        pipeline = Pipeline(source, dest, tmp_path,
-                            content_type_strategy=strategy, type_resolver=resolver)
-        pipeline.run()
-        assert len(dest.written) == 1
-
-    def test_convert_without_resolver_processes(self, tmp_path):
-        """convert 但无 resolver 时仍处理（不转换）"""
-        docs = [_make_doc("1", "A", contentType="DOCUMENT")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"DOCUMENT": "convert"})
-        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
-        pipeline.run()
-        assert len(dest.written) == 1
-
-    def test_download_action_processes(self, tmp_path):
-        """download 动作正常处理"""
-        docs = [_make_doc("1", "A", contentType="IMAGE")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        strategy = ContentTypeStrategy({"IMAGE": "download"})
-        pipeline = Pipeline(source, dest, tmp_path, content_type_strategy=strategy)
-        pipeline.run()
-        assert len(dest.written) == 1
-
-    def test_no_strategy_uses_old_resolver(self, tmp_path):
-        """无 ContentTypeStrategy 时走原有 TypeRuleResolver 逻辑（向后兼容）"""
-        docs = [_make_doc("1", "A", extension="pdf")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
-        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
         pipeline.run()
         assert len(dest.written) == 1
 
@@ -404,21 +317,22 @@ class TestLocalDriveDestination:
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
-        doc = Document(
-            meta=DocumentMeta(
-                id="node1",
-                title="方案",
-                path="产品规划/方案",
-                hash="abc123",
-                extra={"space_name": "知识库A", "contentType": "ALIDOC", "extension": "adoc"},
-            ),
-            content="# 方案内容",
-            content_type="markdown",
+        bundle = Bundle(
+            files=[FileItem(name="方案.md", content="# 方案内容", content_type="text/markdown", role="main")],
+            context={
+                "id": "node1",
+                "title": "方案",
+                "path": "产品规划/方案",
+                "hash": "abc123",
+                "space_name": "知识库A",
+                "contentType": "ALIDOC",
+                "extension": "adoc",
+            },
         )
 
-        result = dest.write(doc)
+        result = dest.write(bundle)
 
-        # 文件已创建，路径包含 space_name 和原始路径，扩展名由 content_type 推断
+        # 文件已创建，路径包含 space_name 和原始路径
         expected_file = output_dir / "知识库A" / "产品规划" / "方案.md"
         assert expected_file.exists()
         assert expected_file.read_text(encoding="utf-8") == "# 方案内容"
@@ -436,19 +350,54 @@ class TestLocalDriveDestination:
 
         assert result == str(expected_file)
 
+    def test_write_with_attachments(self, tmp_path):
+        """测试 Bundle 带附件的场景"""
+        from docpipe.destinations.localdrive import LocalDriveDestination
+
+        output_dir = tmp_path / "output"
+        dest = LocalDriveDestination(output_dir=str(output_dir))
+
+        # Bundle 包含主文档和图片附件
+        bundle = Bundle(
+            files=[
+                FileItem(name="文档.md", content="# 文档\n\n![图片](图片.png)", content_type="text/markdown", role="main"),
+                FileItem(name="图片.png", content=b"fake-png-data", content_type="image/png", role="attachment"),
+            ],
+            context={
+                "id": "node1",
+                "title": "文档",
+                "path": "文档",
+                "hash": "def456",
+                "space_name": "知识库A",
+            },
+        )
+
+        result = dest.write(bundle)
+
+        # 主文件已创建
+        main_file = output_dir / "知识库A" / "文档.md"
+        assert main_file.exists()
+        assert main_file.read_text(encoding="utf-8") == "# 文档\n\n![图片](图片.png)"
+
+        # 附件已创建
+        image_file = output_dir / "知识库A" / "图片.png"
+        assert image_file.exists()
+        assert image_file.read_bytes() == b"fake-png-data"
+
+        assert result == str(main_file)
+
     def test_write_skips_unchanged(self, tmp_path):
         from docpipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
-        doc = Document(
-            meta=DocumentMeta(id="1", title="A", path="A", hash="h1", extra={"space_name": "S"}),
-            content="hello",
-            content_type="markdown",
+        bundle = Bundle(
+            files=[FileItem(name="A.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "A", "path": "A", "hash": "h1", "space_name": "S"},
         )
 
         # 第一次写入
-        dest.write(doc)
+        dest.write(bundle)
         file_path = output_dir / "S" / "A.md"
         mtime1 = file_path.stat().st_mtime
 
@@ -457,7 +406,7 @@ class TestLocalDriveDestination:
 
         # 第二次写入（内容相同，hash 相同）
         dest2 = LocalDriveDestination(output_dir=str(output_dir))
-        dest2.write(doc)
+        dest2.write(bundle)
         mtime2 = file_path.stat().st_mtime
 
         assert mtime1 == mtime2
@@ -467,19 +416,17 @@ class TestLocalDriveDestination:
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
-        doc1 = Document(
-            meta=DocumentMeta(id="1", title="A", path="A", hash="h1", extra={"space_name": "S"}),
-            content="old content",
-            content_type="markdown",
+        bundle1 = Bundle(
+            files=[FileItem(name="A.md", content="old content", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "A", "path": "A", "hash": "h1", "space_name": "S"},
         )
-        dest.write(doc1)
+        dest.write(bundle1)
 
-        doc2 = Document(
-            meta=DocumentMeta(id="1", title="A", path="A", hash="h2", extra={"space_name": "S"}),
-            content="new content",
-            content_type="markdown",
+        bundle2 = Bundle(
+            files=[FileItem(name="A.md", content="new content", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "A", "path": "A", "hash": "h2", "space_name": "S"},
         )
-        dest.write(doc2)
+        dest.write(bundle2)
 
         file_path = output_dir / "S" / "A.md"
         assert file_path.read_text(encoding="utf-8") == "new content"
@@ -489,13 +436,12 @@ class TestLocalDriveDestination:
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
-        doc = Document(
-            meta=DocumentMeta(id="1", title="A", path="A", hash="h1", extra={"space_name": "S"}),
-            content="hello",
-            content_type="markdown",
+        bundle = Bundle(
+            files=[FileItem(name="A.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "A", "path": "A", "hash": "h1", "space_name": "S"},
         )
 
-        file_path = dest.write(doc)
+        file_path = dest.write(bundle)
         assert Path(file_path).exists()
 
         dest.remove_by_path(file_path)
@@ -520,8 +466,8 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        titles = {d.title for d in docs}
+        metas = source.list()
+        titles = {m.title for m in metas}
         assert titles == {"a", "b", "c", "d"}
 
     def test_list_skips_hidden_dirs_and_files(self, tmp_path):
@@ -533,9 +479,9 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        assert len(docs) == 1
-        assert docs[0].title == "visible"
+        metas = source.list()
+        assert len(metas) == 1
+        assert metas[0].title == "visible"
 
     def test_list_skips_no_extension(self, tmp_path):
         (tmp_path / "README").write_text("no extension")
@@ -543,9 +489,9 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        assert len(docs) == 1
-        assert docs[0].title == "guide"
+        metas = source.list()
+        assert len(metas) == 1
+        assert metas[0].title == "guide"
 
     def test_list_recursive(self, tmp_path):
         sub = tmp_path / "sub" / "dir"
@@ -555,8 +501,8 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        paths = {d.path for d in docs}
+        metas = source.list()
+        paths = {m.path for m in metas}
         assert "root.md" in paths
         assert str(Path("sub") / "dir" / "deep.md") in paths
 
@@ -570,32 +516,32 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        doc = source.fetch(docs[0])
-        assert isinstance(doc.content, str)
-        assert doc.content == "hello world"
-        assert doc.content_type == "md"
+        metas = source.list()
+        bundle = source.fetch(metas[0])
+        assert isinstance(bundle.main.content, str)
+        assert bundle.main.content == "hello world"
+        assert bundle.main.content_type == "markdown"
 
     def test_fetch_binary_file(self, tmp_path):
         (tmp_path / "test.pdf").write_bytes(b"%PDF-1.4 fake content")
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        doc = source.fetch(docs[0])
-        assert isinstance(doc.content, bytes)
-        assert doc.content_type == "pdf"
+        metas = source.list()
+        bundle = source.fetch(metas[0])
+        assert isinstance(bundle.main.content, bytes)
+        assert bundle.main.content_type == "pdf"
 
     def test_fetch_metadata(self, tmp_path):
         (tmp_path / "report.pdf").write_bytes(b"%PDF fake")
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        assert docs[0].title == "report"
-        assert docs[0].extra["extension"] == "pdf"
-        assert docs[0].extra["size"] > 0
-        assert "report.pdf" in docs[0].path
+        metas = source.list()
+        assert metas[0].title == "report"
+        assert metas[0].extra["extension"] == "pdf"
+        assert metas[0].extra["size"] > 0
+        assert "report.pdf" in metas[0].path
 
     def test_include_filter(self, tmp_path):
         (tmp_path / "a.md").write_text("md")
@@ -604,8 +550,8 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path), include=["*.md", "*.pdf"])
-        docs = source.list_documents()
-        titles = {d.title for d in docs}
+        metas = source.list()
+        titles = {m.title for m in metas}
         assert titles == {"a", "b"}
 
     def test_exclude_filter(self, tmp_path):
@@ -615,8 +561,8 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path), exclude=["*.pdf"])
-        docs = source.list_documents()
-        titles = {d.title for d in docs}
+        metas = source.list()
+        titles = {m.title for m in metas}
         assert titles == {"a", "c"}
 
     def test_exclude_overrides_include(self, tmp_path):
@@ -629,8 +575,8 @@ class TestLocalDriveSource:
             include=["*.md", "*.pdf"],
             exclude=["*.pdf"],
         )
-        docs = source.list_documents()
-        titles = {d.title for d in docs}
+        metas = source.list()
+        titles = {m.title for m in metas}
         assert titles == {"a"}
 
     def test_no_filters_includes_all(self, tmp_path):
@@ -640,49 +586,8 @@ class TestLocalDriveSource:
 
         from docpipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
-        docs = source.list_documents()
-        assert len(docs) == 3
-
-
-class TestPipelineTypeRules:
-    def test_skip_unknown_type(self, tmp_path):
-        """未知扩展名不在 type_rules 中，直接跳过"""
-        docs = [_make_doc("1", "A", extension="tar.gz")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        resolver = TypeRuleResolver(extension_rules={".pdf": "markitdown"})
-        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
-        pipeline.run()
-        assert len(dest.written) == 0
-
-    def test_skip_explicit_skip(self, tmp_path):
-        """配置中显式标记 skip 的文件被跳过"""
-        docs = [_make_doc("1", "A", extension="exe")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        resolver = TypeRuleResolver(extension_rules={".exe": "skip"})
-        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
-        pipeline.run()
-        assert len(dest.written) == 0
-
-    def test_process_with_converter(self, tmp_path):
-        """匹配到 converter 的文件正常处理"""
-        docs = [_make_doc("1", "A", extension="txt")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        resolver = TypeRuleResolver(extension_rules={".txt": "markitdown"})
-        pipeline = Pipeline(source, dest, tmp_path, type_resolver=resolver)
-        pipeline.run()
-        assert len(dest.written) == 1
-
-    def test_no_resolver_processes_all(self, tmp_path):
-        """无 resolver 时走原有逻辑，全部处理"""
-        docs = [_make_doc("1", "A")]
-        source = FakeSource(docs)
-        dest = FakeDestination()
-        pipeline = Pipeline(source, dest, tmp_path)
-        pipeline.run()
-        assert len(dest.written) == 1
+        metas = source.list()
+        assert len(metas) == 3
 
 
 class TestEnvInterpolation:
@@ -783,44 +688,40 @@ class TestStepRegistry:
 class TestConvertStep:
     def test_needs_conversion_with_matching_extension(self):
         from docpipe.steps.convert import ConvertStep
-        doc = Document(
-            meta=DocumentMeta(id="1", title="t", path="t.pdf", hash="", extra={"extension": "pdf"}),
-            content="",
-            content_type="pdf",
+        bundle = Bundle(
+            files=[FileItem(name="t.pdf", content=b"", content_type="application/pdf", role="main")],
+            context={"id": "1", "title": "t", "path": "t.pdf", "extension": "pdf"},
         )
         step = ConvertStep(extension_rules={".pdf": "markitdown"})
-        assert step.needs_conversion(doc) is True
+        assert step.needs_conversion(bundle) is True
 
     def test_no_conversion_without_matching_extension(self):
         from docpipe.steps.convert import ConvertStep
-        doc = Document(
-            meta=DocumentMeta(id="1", title="t", path="t.txt", hash="", extra={"extension": "txt"}),
-            content="hello",
-            content_type="txt",
+        bundle = Bundle(
+            files=[FileItem(name="t.txt", content="hello", content_type="text/plain", role="main")],
+            context={"id": "1", "title": "t", "path": "t.txt", "extension": "txt"},
         )
         step = ConvertStep(extension_rules={".pdf": "markitdown"})
-        assert step.needs_conversion(doc) is False
+        assert step.needs_conversion(bundle) is False
 
     def test_source_rule_skips_conversion(self):
         from docpipe.steps.convert import ConvertStep
-        doc = Document(
-            meta=DocumentMeta(id="1", title="t", path="t.md", hash="", extra={"extension": "md"}),
-            content="hello",
-            content_type="md",
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "t.md", "extension": "md"},
         )
         step = ConvertStep(extension_rules={".md": "source"})
-        assert step.needs_conversion(doc) is False
+        assert step.needs_conversion(bundle) is False
 
     def test_process_no_rule_returns_unchanged(self):
         from docpipe.steps.convert import ConvertStep
-        doc = Document(
-            meta=DocumentMeta(id="1", title="t", path="t.md", hash="", extra={"extension": "md"}),
-            content="hello",
-            content_type="md",
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "t.md", "extension": "md"},
         )
         step = ConvertStep(extension_rules={".pdf": "markitdown"})
-        result = step.process(doc)
-        assert result.content == "hello"
+        result = step.process(bundle)
+        assert result.main.content == "hello"
 
 
 class TestImageDescriptionStep:
@@ -828,22 +729,84 @@ class TestImageDescriptionStep:
         """非文本内容直接跳过"""
         from docpipe.steps.image_description import ImageDescriptionStep
         step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
-        doc = Document(
-            meta=DocumentMeta(id="1", title="t", path="t.pdf", hash=""),
-            content=b"binary data",
-            content_type="pdf",
+        bundle = Bundle(
+            files=[FileItem(name="t.pdf", content=b"binary data", content_type="application/pdf", role="main")],
+            context={"id": "1", "title": "t", "path": "t.pdf"},
         )
-        result = step.process(doc)
-        assert result.content == b"binary data"
+        result = step.process(bundle)
+        assert result.main.content == b"binary data"
 
     def test_no_images_unchanged(self):
         """无图片的 markdown 不变"""
         from docpipe.steps.image_description import ImageDescriptionStep
         step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
-        doc = Document(
-            meta=DocumentMeta(id="1", title="t", path="t.md", hash=""),
-            content="# Hello\n\nNo images here.",
-            content_type="markdown",
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="# Hello\n\nNo images here.", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "t.md"},
         )
-        result = step.process(doc)
-        assert result.content == "# Hello\n\nNo images here."
+        result = step.process(bundle)
+        assert result.main.content == "# Hello\n\nNo images here."
+
+    def test_with_image_files_from_bundle(self, monkeypatch):
+        """测试从 bundle 中获取图片文件"""
+        from docpipe.steps.image_description import ImageDescriptionStep
+        from docpipe.image import ImagePostProcessor, OpenAIVisionClient
+
+        # Mock OpenAIVisionClient
+        mock_vision_client = MagicMock()
+        mock_vision_client.describe.return_value = ("image-1", "图片描述")
+        monkeypatch.setattr("docpipe.steps.image_description.OpenAIVisionClient", lambda **kw: mock_vision_client)
+
+        # Mock ImagePostProcessor 的 process 方法
+        fake_metadata = {"image_1.png": {"description": "图片描述"}}
+        original_process = None
+        def mock_process(markdown, source_context, images_dir=None, image_files=None):
+            # 验证 image_files 参数
+            assert "images/image_1.png" in image_files
+            assert image_files["images/image_1.png"].content == b"fake-image"
+            return ("# 标题\n\n![image_1](images/image_1.png)", fake_metadata)
+
+        step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
+        step._processor.process = mock_process
+
+        bundle = Bundle(
+            files=[
+                FileItem(name="test.md", content="# 标题\n\n![原始引用](images/image_1.png)", content_type="text/markdown", role="main"),
+                FileItem(name="images/image_1.png", content=b"fake-image", content_type="image/png", role="image"),
+            ],
+            context={"id": "1", "title": "test", "path": "test.md", "source_context": "测试文档"},
+        )
+
+        result = step.process(bundle)
+
+        # 验证结果
+        assert result.main.content == "# 标题\n\n![image_1](images/image_1.png)"
+
+    def test_image_files_without_path_prefix(self, monkeypatch):
+        """测试图片文件名没有路径前缀的情况（向后兼容）"""
+        from docpipe.steps.image_description import ImageDescriptionStep
+
+        # Mock OpenAIVisionClient
+        mock_vision_client = MagicMock()
+        mock_vision_client.describe.return_value = ("image-1", "描述")
+        monkeypatch.setattr("docpipe.steps.image_description.OpenAIVisionClient", lambda **kw: mock_vision_client)
+
+        # Mock ImagePostProcessor 的 process 方法
+        fake_metadata = {"image_1.png": {"description": "描述"}}
+        def mock_process(markdown, source_context, images_dir=None, image_files=None):
+            # 验证 image_files 参数包含 short_name 映射
+            assert "image_1.png" in image_files
+            return ("# 标题\n\n![image_1](image_1.png)", fake_metadata)
+
+        step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
+        step._processor.process = mock_process
+
+        bundle = Bundle(
+            files=[
+                FileItem(name="test.md", content="# 标题\n\n![img](image_1.png)", content_type="text/markdown", role="main"),
+                FileItem(name="image_1.png", content=b"fake", content_type="image/png", role="image"),
+            ],
+            context={"id": "1", "title": "test", "path": "test.md", "source_context": "测试"},
+        )
+
+        result = step.process(bundle)

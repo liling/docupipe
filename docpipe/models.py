@@ -9,8 +9,6 @@ class SkipBundle(Exception):
     pass
 
 
-# 旧异常兼容别名
-SkipDocument = SkipBundle
 
 
 @dataclass
@@ -56,20 +54,3 @@ class BundleMeta:
     path: str = ""
     hash: str = ""
     extra: dict = field(default_factory=dict)
-
-
-# 旧模型兼容别名 —— 迁移完成后删除
-@dataclass
-class DocumentMeta:
-    id: str
-    title: str
-    path: str
-    hash: str = ""
-    extra: dict = field(default_factory=dict)
-
-
-@dataclass
-class Document:
-    meta: DocumentMeta
-    content: str | bytes
-    content_type: str = "markdown"
