@@ -1,22 +1,12 @@
 converters:
   extensions:
-    ".pdf": markitdown
-    ".docx": markitdown
-    ".xlsx": markitdown
-    ".pptx": markitdown
-    ".doc": markitdown
-    ".xls": markitdown
-    ".ppt": markitdown
-    ".html": markitdown
-    ".htm": markitdown
-    ".csv": markitdown
-    ".json": markitdown
-    ".xml": markitdown
-    ".txt": markitdown
-    ".md": markitdown
-    ".rtf": markitdown
-    ".odt": markitdown
-    ".ods": markitdown
+    ".pdf": mineru
+    ".docx": mineru
+    ".pptx": mineru
+    ".xlsx": mineru
+    ".doc": mineru
+    ".xls": mineru
+    ".ppt": mineru
 
 pipelines:
 
@@ -45,3 +35,37 @@ pipelines:
     options:
       resume: true
       sync: true
+
+  - name: shujuxian-to-local
+    source: dingtalk
+    destination: localdrive
+    content_type_rules:
+      DOCUMENT: convert
+      ALIDOC: source
+      ARCHIVE: skip
+      IMAGE: skip
+      OTHER: skip
+    source_config:
+      space_id: "nb9XJB7qpnkxQXyA"
+      folders:
+        - "产品规划物料/解决方案"
+      image_description: true
+      image_description_base_url: "http://172.16.4.197:8002/v1"
+      image_description_api_key: "sk-MTc3MzY0ODE4NDc4NdJiiX-Lt6vvfVMtMVR38-4e6BDBmdTg_ixoQGQQCfwV"
+      image_description_model: "qwen3.5-flash"
+    dest_config:
+      output_dir: ./output
+
+  - name: local-to-hindsight
+    source: localdrive
+    destination: hindsight
+    content_type_rules:
+      md: source
+    source_config:
+      input_dir: ./output
+      include: ["*.md"]
+    dest_config:
+      api_url: "http://127.0.0.1:8888"
+      api_key: "hsm_USLTwNV2CzyuOoaSebz2jiZpIrD91tj2lGvkmPWW6Vk"
+      bank_id: "docpipe"
+      context_prefix: "数据线知识库文档"
