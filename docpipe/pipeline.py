@@ -125,10 +125,18 @@ class Pipeline:
                 # 运行处理步骤
                 if self._steps is not None:
                     for step in self._steps:
-                        bundle = step.process(bundle)
+                        step_name = step.name or step.__class__.__name__
+                        self._display.set_step(step_name)
+                        bundle.context["_step_progress"] = self._display.set_step
+                        try:
+                            bundle = step.process(bundle)
+                        finally:
+                            bundle.context.pop("_step_progress", None)
+                            self._display.clear_step()
 
                 # 计算最终 hash
                 bundle_hash_value = bundle_hash(bundle)
+                bundle.context["hash"] = bundle_hash_value
 
                 if dry_run:
                     self._display.result("info", f"[dry-run] {_display_path}")

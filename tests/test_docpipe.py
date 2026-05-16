@@ -760,7 +760,7 @@ class TestImageDescriptionStep:
         # Mock ImagePostProcessor 的 process 方法
         fake_metadata = {"image_1.png": {"description": "图片描述"}}
         original_process = None
-        def mock_process(markdown, source_context, images_dir=None, image_files=None):
+        def mock_process(markdown, source_context, images_dir=None, image_files=None, progress_callback=None):
             # 验证 image_files 参数
             assert "images/image_1.png" in image_files
             assert image_files["images/image_1.png"].content == b"fake-image"
@@ -793,7 +793,7 @@ class TestImageDescriptionStep:
 
         # Mock ImagePostProcessor 的 process 方法
         fake_metadata = {"image_1.png": {"description": "描述"}}
-        def mock_process(markdown, source_context, images_dir=None, image_files=None):
+        def mock_process(markdown, source_context, images_dir=None, image_files=None, progress_callback=None):
             # 验证 image_files 参数包含 short_name 映射
             assert "image_1.png" in image_files
             return ("# 标题\n\n![image_1](image_1.png)", fake_metadata)

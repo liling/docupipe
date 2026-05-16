@@ -47,6 +47,7 @@ class Display:
         self.skipped: int = 0
         self.failed: int = 0
 
+        self._step_info: str = ""
         self._title: str = ""
         self._start_time: float = 0
 
@@ -117,6 +118,16 @@ class Display:
         with self._lock:
             self.failed += 1
             self._advance_progress()
+
+    def set_step(self, label: str) -> None:
+        with self._lock:
+            self._step_info = label
+            self._refresh_live()
+
+    def clear_step(self) -> None:
+        with self._lock:
+            self._step_info = ""
+            self._refresh_live()
 
     def set_current(self, label: str) -> None:
         if not self._is_tty:
@@ -199,7 +210,10 @@ class Display:
             return None
         lines = Text()
         for label in self._current_tasks:
-            lines.append(f"⏳ {label}\n", style="yellow")
+            lines.append(f"⏳ {label}", style="yellow")
+            if self._step_info:
+                lines.append(f" → {self._step_info}", style="cyan")
+            lines.append("\n")
         return lines
 
     def _refresh_live(self) -> None:

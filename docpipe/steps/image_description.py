@@ -39,9 +39,11 @@ class ImageDescriptionStep(PipelineStep):
                 image_files[f"images/{image_item.name}"] = image_item
 
         source_context = bundle.context.get("source_context", "")
+        progress_cb = bundle.context.get("_step_progress")
 
         new_content, image_metadata = self._processor.process(
             content, source_context, image_files=image_files,
+            progress_callback=progress_cb,
         )
 
         # 更新 main 内容

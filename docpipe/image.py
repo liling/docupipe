@@ -140,7 +140,8 @@ class ImagePostProcessor:
         self.max_image_size = max_image_size
 
     def process(self, markdown: str, source_context: str, images_dir: str | None = None,
-                image_files: dict[str, FileItem] | None = None) -> tuple[str, dict]:
+                image_files: dict[str, FileItem] | None = None,
+                progress_callback=None) -> tuple[str, dict]:
         """处理 markdown 中的图片引用，转换为描述和 image:// 引用。
 
         Args:
@@ -148,6 +149,7 @@ class ImagePostProcessor:
             source_context: 来源上下文（用于 AI 描述）
             images_dir: 图片目录（用于本地图片读取）
             image_files: 图片文件映射（新 Bundle 模型路径）
+            progress_callback: 进度回调函数，接收 (step_name) 参数
 
         Returns:
             (处理后的 markdown, 图片元数据)
@@ -155,6 +157,11 @@ class ImagePostProcessor:
         image_metadata: dict[str, dict] = {}
 
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+
+        # 预统计图片数量，用于进度显示
+        all_matches = list(re.finditer(pattern, markdown))
+        total_images = len(all_matches)
+        image_idx = 0
 
         def replace_image(match: re.Match) -> str:
             url = match.group(2).strip().strip('"').strip("'").strip()
@@ -193,6 +200,11 @@ class ImagePostProcessor:
                 if image_bytes is None:
                     logger.debug("图片不满足处理条件，保留原引用: %s", url[:80])
                     return match.group(0)
+
+                nonlocal image_idx
+                image_idx += 1
+                if progress_callback and total_images > 0:
+                    progress_callback(f"image_description ({image_idx}/{total_images})")
 
                 filename, description = self.vision_client.describe(image_bytes, source_context)
 
