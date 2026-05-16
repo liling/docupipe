@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -167,103 +168,133 @@ def _check_image_size(image_bytes: bytes) -> bool:
 
 
 class ImagePostProcessor:
-    def __init__(self, vision_client: OpenAIVisionClient, max_image_size: int = 10 * 1024 * 1024):
+    def __init__(self, vision_client: OpenAIVisionClient, max_image_size: int = 10 * 1024 * 1024,
+                 concurrency: int = 1):
         self.vision_client = vision_client
         self.max_image_size = max_image_size
+        self.concurrency = concurrency
+
+    def _resolve_image_bytes(self, url: str, image_files: dict[str, FileItem] | None,
+                             images_dir: str | None) -> bytes | None:
+        if image_files and url in image_files:
+            file_item = image_files[url]
+            if isinstance(file_item.content, bytes):
+                return file_item.content
+            return base64.b64decode(file_item.content)
+        if url.startswith("data:"):
+            return self._decode_data_uri(url)
+        if "://" in url:
+            resp = req.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp.content
+        if images_dir:
+            local_path = Path(images_dir) / url
+            if local_path.is_file():
+                return local_path.read_bytes()
+        return None
 
     def process(self, markdown: str, source_context: str, images_dir: str | None = None,
                 image_files: dict[str, FileItem] | None = None,
                 progress_callback=None) -> tuple[str, dict]:
-        """处理 markdown 中的图片引用，转换为描述和 image:// 引用。
-
-        Args:
-            markdown: markdown 内容
-            source_context: 来源上下文（用于 AI 描述）
-            images_dir: 图片目录（用于本地图片读取）
-            image_files: 图片文件映射（新 Bundle 模型路径）
-            progress_callback: 进度回调函数，接收 (step_name) 参数
-
-        Returns:
-            (处理后的 markdown, 图片元数据)
-        """
         image_metadata: dict[str, dict] = {}
-
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
-
-        # 预统计图片数量，用于进度显示
         all_matches = list(re.finditer(pattern, markdown))
-        total_images = len(all_matches)
-        image_idx = 0
 
-        def replace_image(match: re.Match) -> str:
+        if not all_matches:
+            return markdown, {}
+
+        # Phase 1: Collect — resolve image bytes for each match
+        processable: list[tuple[int, re.Match, bytes]] = []
+        for i, match in enumerate(all_matches):
             url = match.group(2).strip().strip('"').strip("'").strip()
-
             if url.startswith("image://"):
-                return match.group(0)
-
+                continue
             try:
-                # 新 Bundle 路径：优先从 image_files dict 获取
-                if image_files and url in image_files:
-                    file_item = image_files[url]
-                    if isinstance(file_item.content, bytes):
-                        image_bytes = file_item.content
-                    else:
-                        # 如果是字符串内容，尝试 base64 解码
-                        image_bytes = base64.b64decode(file_item.content)
-                elif url.startswith("data:"):
-                    image_bytes = self._decode_data_uri(url)
-                elif "://" in url:
-                    resp = req.get(url, timeout=30)
-                    resp.raise_for_status()
-                    image_bytes = resp.content
-                elif images_dir:
-                    local_path = Path(images_dir) / url
-                    if local_path.is_file():
-                        image_bytes = local_path.read_bytes()
-                    else:
-                        return match.group(0)
-                else:
-                    return match.group(0)
-
+                image_bytes = self._resolve_image_bytes(url, image_files, images_dir)
                 if not image_bytes or len(image_bytes) > self.max_image_size:
-                    return match.group(0)
-
+                    continue
                 image_bytes = validate_image(image_bytes)
                 if image_bytes is None:
                     logger.debug("图片不满足处理条件，保留原引用: %s", url[:80])
-                    return match.group(0)
-
-                nonlocal image_idx
-                image_idx += 1
-                if progress_callback and total_images > 0:
-                    progress_callback(f"image_description ({image_idx}/{total_images})")
-
-                filename, description = self.vision_client.describe(image_bytes, source_context)
-
-                original_ext = PurePosixPath(url).suffix or ".png"
-                full_filename = f"{filename}{original_ext}"
-                image_metadata[full_filename] = {
-                    "original_url": url[:200],
-                    "description": description,
-                }
-
-                if "/" in url:
-                    new_url = f"{url.rsplit('/', 1)[0]}/{full_filename}"
-                else:
-                    new_url = full_filename
-
-                return f"![{description}]({new_url})"
-
+                    continue
+                processable.append((i, match, image_bytes))
             except Exception as e:
-                logger.warning("图片处理失败 %s: %s", url[:80], e)
-                return match.group(0)
+                logger.warning("图片加载失败 %s: %s", url[:80], e)
 
-        new_markdown = re.sub(pattern, replace_image, markdown)
-        return new_markdown, image_metadata
+        total = len(processable)
+        if total == 0:
+            return markdown, {}
+
+        # Phase 2: Describe
+        image_bytes_list = [img_bytes for _, _, img_bytes in processable]
+        if self.concurrency > 1:
+            results = asyncio.run(self._run_concurrent(image_bytes_list, source_context))
+        else:
+            results = self._run_sync(image_bytes_list, source_context)
+
+        # Phase 3: Build replacements and metadata
+        replacements: dict[int, str] = {}
+        for (idx, match, _), (filename, description) in zip(processable, results):
+            if filename is None:
+                continue
+            url = match.group(2).strip().strip('"').strip("'").strip()
+            original_ext = PurePosixPath(url).suffix or ".png"
+            full_filename = f"{filename}{original_ext}"
+            image_metadata[full_filename] = {
+                "original_url": url[:200],
+                "description": description,
+            }
+            if "/" in url:
+                new_url = f"{url.rsplit('/', 1)[0]}/{full_filename}"
+            else:
+                new_url = full_filename
+            replacements[idx] = f"![{description}]({new_url})"
+
+        # Phase 4: Progress callback
+        if progress_callback and total > 0:
+            done = sum(1 for r in results if r[0] is not None)
+            progress_callback(f"image_description ({done}/{total})")
+
+        # Phase 5: Rebuild markdown
+        parts: list[str] = []
+        last_end = 0
+        for i, match in enumerate(all_matches):
+            parts.append(markdown[last_end:match.start()])
+            if i in replacements:
+                parts.append(replacements[i])
+            else:
+                parts.append(match.group(0))
+            last_end = match.end()
+        parts.append(markdown[last_end:])
+
+        return "".join(parts), image_metadata
+
+    def _run_sync(self, image_bytes_list: list[bytes], source_context: str) -> list[tuple[str | None, str | None]]:
+        results: list[tuple[str | None, str | None]] = []
+        for img_bytes in image_bytes_list:
+            try:
+                filename, description = self.vision_client.describe(img_bytes, source_context)
+                results.append((filename, description))
+            except Exception as e:
+                logger.warning("图片描述失败: %s", e)
+                results.append((None, None))
+        return results
+
+    async def _run_concurrent(self, image_bytes_list: list[bytes], source_context: str) -> list[tuple[str | None, str | None]]:
+        sem = asyncio.Semaphore(self.concurrency)
+
+        async def describe_one(img_bytes: bytes) -> tuple[str | None, str | None]:
+            async with sem:
+                try:
+                    return await self.vision_client.a_describe(img_bytes, source_context)
+                except Exception as e:
+                    logger.warning("图片描述失败: %s", e)
+                    return (None, None)
+
+        return await asyncio.gather(*[describe_one(b) for b in image_bytes_list])
 
     @staticmethod
     def _decode_data_uri(uri: str) -> bytes:
-        """从 data:image/...;base64,... URI 解码图片字节"""
         match = re.match(r'data:[^;]+;base64,(.+)', uri)
         if not match:
             raise ValueError(f"无法解析 data URI: {uri[:50]}")
