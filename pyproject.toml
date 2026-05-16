@@ -1,8 +1,34 @@
 [project]
 name = "docpipe"
 version = "0.1.0"
-description = "通用文档传输 pipeline"
+description = "通用文档传输 pipeline，支持从多种文档源获取内容，经过可配置的处理步骤，传输到多种目标系统"
+readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Ling Li", email = "your@email.com"}
+]
+keywords = ["document", "pipeline", "converter", "dingtalk", "hindsight"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "click>=8.1.0",
+    "markitdown>=0.1.0",
+    "hindsight-client>=0.1.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "openai>=1.0.0",
+    "boto3>=1.28.0",
+]
 dependencies = [
     "click>=8.1.0",
     "markitdown>=0.1.0",
