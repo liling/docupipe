@@ -45,6 +45,43 @@ class _DynamicRenderable:
             yield current
 
 
+class _StdioProxy:
+    """将主线程的 stdout/stderr 写入重定向到 Live 显示上方，防止干扰进度条。
+
+    非主线程（如 Rich 自动刷新线程）的写入直接透传，避免干扰 Live 渲染。
+    """
+
+    def __init__(self, original, display: Display):
+        self._original = original
+        self._display = display
+        self._guard = False
+
+    def write(self, text):
+        if not text or not text.strip():
+            return self._original.write(text)
+        if self._guard or self._display._printing or threading.current_thread() is not threading.main_thread():
+            return self._original.write(text)
+        self._guard = True
+        try:
+            self._display._print(text.rstrip('\n'))
+        finally:
+            self._guard = False
+        return len(text)
+
+    def flush(self):
+        self._original.flush()
+
+    def isatty(self):
+        return self._original.isatty()
+
+    @property
+    def encoding(self):
+        return self._original.encoding
+
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
+
 class Display:
     def __init__(self, console: Console | None = None, is_tty: bool | None = None):
         self._console = console or Console()
@@ -64,6 +101,9 @@ class Display:
         self._step_info: str = ""
         self._title: str = ""
         self._start_time: float = 0
+        self._printing = False
+        self._original_stdout = None
+        self._original_stderr = None
 
     def start(self, title: str, total: int) -> None:
         self._title = title
@@ -87,6 +127,13 @@ class Display:
             auto_refresh=False,
         )
         self._progress_task_id = self._progress.add_task(title, total=total)
+
+        # 先安装 stdio 代理，再启动 Live（Live 会在代理之上安装 FileProxy）
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        sys.stdout = _StdioProxy(sys.stdout, self)
+        sys.stderr = _StdioProxy(sys.stderr, self)
+
         self._live = Live(
             _DynamicRenderable(self),
             console=self._console,
@@ -107,6 +154,13 @@ class Display:
                 self._saved_log_level = None
             self._live.stop()
             self._live = None
+            # Live 停止后恢复原始 stdio
+            if self._original_stdout is not None:
+                sys.stdout = self._original_stdout
+                self._original_stdout = None
+            if self._original_stderr is not None:
+                sys.stderr = self._original_stderr
+                self._original_stderr = None
 
     def result(self, status: str, message: str) -> None:
         icons = {"success": "✅", "skip": "⏭️ ", "error": "❌", "info": "ℹ️ "}
@@ -182,10 +236,13 @@ class Display:
 
     def _print(self, text: str) -> None:
         if self._live:
+            self._printing = True
             try:
                 self._live.console.print(text)
             except Exception:
                 self._live.console.print(text, markup=False)
+            finally:
+                self._printing = False
         else:
             print(text)
 
