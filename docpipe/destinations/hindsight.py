@@ -96,6 +96,6 @@ class HindsightDestination(DestinationBase):
                 "relative_path": meta.path,
                 "full_path": f"{meta.extra.get('space_name', '')}/{meta.path}" if meta.extra.get("space_name") else meta.path,
                 "content_hash": meta.hash,
-                "updateTime": str(update_time) if update_time else None,
+                "updateTime": str(update_time) if update_time else "",
             },
         }
