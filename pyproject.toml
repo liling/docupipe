@@ -21,7 +21,7 @@ dev = [
     "responses>=0.24.0",
 ]
 mineru = [
-    "mineru>=0.2.0",
+    "mineru>=3.1.14",
 ]
 all = [
     "docpipe[dev,mineru]",
