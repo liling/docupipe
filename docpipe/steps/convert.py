@@ -103,7 +103,7 @@ class ConvertStep(PipelineStep):
             try:
                 image_bytes = base64.b64decode(b64_data)
                 img_item = FileItem(
-                    name=filename,
+                    name=f"images/{filename}",
                     content=image_bytes,
                     content_type=f"image/{mime_type}",
                     role="image"
