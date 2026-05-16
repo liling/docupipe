@@ -112,6 +112,13 @@ class _FakeVisionClient:
                 return val
         return "test-image", "测试图片描述"
 
+    async def a_describe(self, image_bytes: bytes, context: str) -> tuple[str, str]:
+        self.calls.append((image_bytes, context))
+        if self.results:
+            for _, val in self.results.items():
+                return val
+        return "test-image", "测试图片描述"
+
 
 def _mock_get(url, **kwargs):
     mock_resp = MagicMock()
@@ -271,6 +278,41 @@ class TestImagePostProcessor:
         assert result == '![图表](missing.png)'
         assert metadata == {}
         assert len(vision.calls) == 0
+
+    def test_process_concurrent_multiple_images(self, monkeypatch):
+        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        call_count = [0]
+
+        def mock_describe(img, ctx):
+            call_count[0] += 1
+            return f"image-{call_count[0]}", f"描述{call_count[0]}"
+
+        async def mock_a_describe(img, ctx):
+            call_count[0] += 1
+            return f"image-{call_count[0]}", f"描述{call_count[0]}"
+
+        vision = _FakeVisionClient()
+        vision.describe = mock_describe
+        vision.a_describe = mock_a_describe
+
+        processor = ImagePostProcessor(vision_client=vision, concurrency=4)
+        markdown = (
+            '![a](https://example.com/a.png)\n'
+            '文字\n'
+            '![b](https://example.com/b.png)\n'
+            '文字\n'
+            '![c](https://example.com/c.png)'
+        )
+        result, metadata = processor.process(markdown, "测试文档")
+
+        assert len(metadata) == 3
+        assert "image-1.png" in metadata
+        assert "image-2.png" in metadata
+        assert "image-3.png" in metadata
+        assert "描述1" in result
+        assert "描述2" in result
+        assert "描述3" in result
 
 
 class TestEnvironmentVariableDefaults:
