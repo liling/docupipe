@@ -6,7 +6,7 @@ from pathlib import Path
 
 from docpipe.destinations import register_destination
 from docpipe.destinations.base import DestinationBase
-from docpipe.models import Document
+from docpipe.models import Bundle
 
 
 @register_destination("hindsight")
@@ -32,13 +32,13 @@ class HindsightDestination(DestinationBase):
             self._client.__enter__()
         return self._client
 
-    def write(self, doc: Document) -> str:
-        item = self._build_retain_item(doc)
+    def write(self, bundle: Bundle) -> str:
+        item = self._build_retain_item(bundle)
         client = self._get_client()
         client.retain_batch(self.bank_id, items=[item], retain_async=True)
         return item["document_id"]
 
-    def remove(self, doc_id: str) -> None:
+    def remove(self, bundle_id: str) -> None:
         raise NotImplementedError("Hindsight 不支持删除文档")
 
     def close(self) -> None:
@@ -46,30 +46,34 @@ class HindsightDestination(DestinationBase):
             self._client.__exit__(None, None, None)
             self._client = None
 
-    def _build_retain_item(self, doc: Document) -> dict:
-        meta = doc.meta
-        content = doc.content if isinstance(doc.content, str) else doc.content.decode("utf-8")
+    def _build_retain_item(self, bundle: Bundle) -> dict:
+        bundle_context = bundle.context
+        main_file = bundle.main
+        if not main_file:
+            raise ValueError("Bundle must have a main file")
+
+        content = main_file.content if isinstance(main_file.content, str) else main_file.content.decode("utf-8")
 
         # 从 path 构建标签
-        path_parts = Path(meta.path).parts
+        path_parts = Path(bundle_context["path"]).parts
         space_name = path_parts[0] if path_parts else ""
         path_tags = [f"path:{part}" for part in path_parts[1:]]
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # context
         if self.context_prefix:
-            context = self.context_prefix
+            context_str = self.context_prefix
         else:
             folder_display = "/".join(path_parts[1:]) if len(path_parts) > 1 else ""
             if folder_display:
-                context = f"文档：{meta.title}，来自 {space_name}/{folder_display}"
+                context_str = f"文档：{bundle_context['title']}，来自 {space_name}/{folder_display}"
             elif space_name:
-                context = f"文档：{meta.title}，来自 {space_name}"
+                context_str = f"文档：{bundle_context['title']}，来自 {space_name}"
             else:
-                context = f"文档：{meta.title}"
+                context_str = f"文档：{bundle_context['title']}"
 
         # timestamp
-        update_time = meta.extra.get("updateTime")
+        update_time = bundle_context.get("updateTime")
         if update_time:
             tz = timezone(timedelta(hours=8))
             dt = datetime.fromtimestamp(update_time / 1000, tz=tz)
@@ -78,24 +82,24 @@ class HindsightDestination(DestinationBase):
             timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
         # document_id 前缀
-        source_name = meta.extra.get("_source", "local")
-        document_id = f"{source_name}:{meta.id}"
+        source_name = bundle_context.get("_source", "local")
+        document_id = f"{source_name}:{bundle_context['id']}"
 
         return {
             "content": content,
             "document_id": document_id,
             "timestamp": timestamp,
-            "context": context,
+            "context": context_str,
             "tags": tags,
             "metadata": {
-                "id": meta.id,
-                "title": meta.title,
-                "contentType": meta.extra.get("contentType", ""),
-                "extension": meta.extra.get("extension", ""),
-                "space_name": meta.extra.get("space_name", ""),
-                "relative_path": meta.path,
-                "full_path": f"{meta.extra.get('space_name', '')}/{meta.path}" if meta.extra.get("space_name") else meta.path,
-                "content_hash": meta.hash,
+                "id": bundle_context["id"],
+                "title": bundle_context["title"],
+                "contentType": bundle_context.get("contentType", ""),
+                "extension": bundle_context.get("extension", ""),
+                "space_name": bundle_context.get("space_name", ""),
+                "relative_path": bundle_context["path"],
+                "full_path": f"{bundle_context.get('space_name', '')}/{bundle_context['path']}" if bundle_context.get("space_name") else bundle_context["path"],
+                "content_hash": bundle_context["hash"],
                 "updateTime": str(update_time) if update_time else "",
             },
         }

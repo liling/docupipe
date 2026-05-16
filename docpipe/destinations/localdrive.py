@@ -5,7 +5,7 @@ from pathlib import Path
 
 from docpipe.destinations import register_destination
 from docpipe.destinations.base import DestinationBase
-from docpipe.models import Document
+from docpipe.models import Bundle
 
 
 @register_destination("localdrive")
@@ -13,33 +13,59 @@ class LocalDriveDestination(DestinationBase):
     def __init__(self, output_dir: str, **kwargs):
         self._output_dir = Path(output_dir)
 
-    def write(self, doc: Document) -> str:
-        file_path = self._resolve_path(doc)
+    def write(self, bundle: Bundle) -> str:
+        """写入Bundle到本地磁盘，包括主文件和所有附件"""
+        main_file = bundle.main
+        if not main_file:
+            raise ValueError("Bundle must have a main file")
 
-        # 文件已存在且 hash 相同 → 跳过
-        if file_path.exists() and doc.meta.hash:
-            sidecar = Path(str(file_path) + ".json")
+        # 解析主文件路径
+        main_path = self._resolve_path(bundle)
+
+        # 文件已存在且 hash 相同 → 跳过主文件
+        if main_path.exists():
+            sidecar = Path(str(main_path) + ".json")
             if sidecar.exists():
                 stored = json.loads(sidecar.read_text(encoding="utf-8"))
-                if stored.get("content_hash") == doc.meta.hash:
-                    return str(file_path)
+                if stored.get("content_hash") == bundle.context.get("hash"):
+                    pass  # 跳过主文件写入，但可能需要检查附件
+                else:
+                    self._write_main_file(main_path, main_file)
+                    self._write_sidecar(main_path, bundle)
+        else:
+            main_path.parent.mkdir(parents=True, exist_ok=True)
+            self._write_main_file(main_path, main_file)
+            self._write_sidecar(main_path, bundle)
 
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # 写入所有非主文件（图片、附件等）
+        main_dir = main_path.parent
+        for file_item in bundle.files:
+            if file_item.role != "main":
+                # 文件名可能包含路径前缀，如 "images/image_1.png"
+                file_path = main_dir / file_item.name
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                self._write_file(file_path, file_item)
 
-        content = doc.content
+        return str(main_path)
+
+    def _write_main_file(self, file_path: Path, main_file) -> None:
+        """写入主文件内容"""
+        content = main_file.content
+        self._write_file(file_path, main_file)
+
+    def _write_file(self, file_path: Path, file_item) -> None:
+        """写入任意文件内容"""
+        content = file_item.content
         if isinstance(content, bytes):
             file_path.write_bytes(content)
         else:
             file_path.write_text(content, encoding="utf-8")
 
-        self._write_sidecar(file_path, doc)
-
-        return str(file_path)
-
-    def remove(self, doc_id: str) -> None:
+    def remove(self, bundle_id: str) -> None:
         raise NotImplementedError("localdrive remove 需要路径信息")
 
     def remove_by_path(self, file_path: str) -> None:
+        """按路径删除文件及对应的 sidecar"""
         p = Path(file_path)
         if p.exists():
             p.unlink()
@@ -47,13 +73,18 @@ class LocalDriveDestination(DestinationBase):
         if sidecar.exists():
             sidecar.unlink()
 
-    def _resolve_path(self, doc: Document) -> Path:
-        meta = doc.meta
-        space_name = meta.extra.get("space_name", "")
-        rel_path = meta.path
+    def _resolve_path(self, bundle: Bundle) -> Path:
+        """从 Bundle context 解析输出路径"""
+        context = bundle.context
+        space_name = context.get("space_name", "")
+        rel_path = context["path"]
 
         # 追加扩展名
-        ext = self._content_type_to_ext(doc.content_type)
+        main_file = bundle.main
+        if main_file:
+            ext = self._content_type_to_ext(main_file.content_type)
+        else:
+            ext = ""
         if ext and not rel_path.endswith(ext):
             rel_path = rel_path + ext
 
@@ -61,18 +92,19 @@ class LocalDriveDestination(DestinationBase):
             return self._output_dir / space_name / rel_path
         return self._output_dir / rel_path
 
-    def _write_sidecar(self, file_path: Path, doc: Document) -> None:
-        meta = doc.meta
-        space_name = meta.extra.get("space_name", "")
+    def _write_sidecar(self, file_path: Path, bundle: Bundle) -> None:
+        """写入元数据 sidecar 文件"""
+        context = bundle.context
+        space_name = context.get("space_name", "")
         data = {
-            "id": meta.id,
-            "title": meta.title,
-            "contentType": meta.extra.get("contentType", ""),
-            "extension": meta.extra.get("extension", ""),
+            "id": context["id"],
+            "title": context["title"],
+            "contentType": context.get("contentType", ""),
+            "extension": context.get("extension", ""),
             "space_name": space_name,
-            "relative_path": meta.path,
-            "full_path": f"{space_name}/{meta.path}" if space_name else meta.path,
-            "content_hash": meta.hash,
+            "relative_path": context["path"],
+            "full_path": f"{space_name}/{context['path']}" if space_name else context["path"],
+            "content_hash": context.get("hash", ""),
         }
         sidecar = Path(str(file_path) + ".json")
         sidecar.write_text(
@@ -82,10 +114,24 @@ class LocalDriveDestination(DestinationBase):
 
     @staticmethod
     def _content_type_to_ext(content_type: str) -> str:
-        mapping = {"markdown": ".md", "text": ".txt", "html": ".html"}
+        """将 content_type 转换为文件扩展名"""
+        mapping = {
+            "markdown": ".md",
+            "text/markdown": ".md",
+            "text": ".txt",
+            "text/plain": ".txt",
+            "html": ".html",
+            "text/html": ".html",
+        }
         mapped = mapping.get(content_type)
         if mapped:
             return mapped
         if content_type:
+            # 如果是 "/" 分隔的内容类型，取最后一部分
+            if "/" in content_type:
+                ext = content_type.split("/")[-1]
+                # 移除版本号等后缀
+                ext = ext.split("+")[0]
+                return f".{ext}"
             return f".{content_type}"
         return ""
