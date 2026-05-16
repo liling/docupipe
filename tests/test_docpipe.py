@@ -739,3 +739,57 @@ class TestParseComponentConfig:
         import pytest
         with pytest.raises(ValueError, match="缺少"):
             parse_component_config({}, {}, "source")
+
+
+class TestStepRegistry:
+    def test_convert_step_registered(self):
+        from docpipe.steps import STEPS
+        assert "convert" in STEPS
+
+    def test_get_step_unknown_raises(self):
+        from docpipe.steps import get_step
+        with pytest.raises(ValueError, match="未知的 step"):
+            get_step("nonexistent")
+
+
+class TestConvertStep:
+    def test_needs_conversion_with_matching_extension(self):
+        from docpipe.steps.convert import ConvertStep
+        doc = Document(
+            meta=DocumentMeta(id="1", title="t", path="t.pdf", hash="", extra={"extension": "pdf"}),
+            content="",
+            content_type="pdf",
+        )
+        step = ConvertStep(extension_rules={".pdf": "markitdown"})
+        assert step.needs_conversion(doc) is True
+
+    def test_no_conversion_without_matching_extension(self):
+        from docpipe.steps.convert import ConvertStep
+        doc = Document(
+            meta=DocumentMeta(id="1", title="t", path="t.txt", hash="", extra={"extension": "txt"}),
+            content="hello",
+            content_type="txt",
+        )
+        step = ConvertStep(extension_rules={".pdf": "markitdown"})
+        assert step.needs_conversion(doc) is False
+
+    def test_source_rule_skips_conversion(self):
+        from docpipe.steps.convert import ConvertStep
+        doc = Document(
+            meta=DocumentMeta(id="1", title="t", path="t.md", hash="", extra={"extension": "md"}),
+            content="hello",
+            content_type="md",
+        )
+        step = ConvertStep(extension_rules={".md": "source"})
+        assert step.needs_conversion(doc) is False
+
+    def test_process_no_rule_returns_unchanged(self):
+        from docpipe.steps.convert import ConvertStep
+        doc = Document(
+            meta=DocumentMeta(id="1", title="t", path="t.md", hash="", extra={"extension": "md"}),
+            content="hello",
+            content_type="md",
+        )
+        step = ConvertStep(extension_rules={".pdf": "markitdown"})
+        result = step.process(doc)
+        assert result.content == "hello"
