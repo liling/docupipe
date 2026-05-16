@@ -533,6 +533,84 @@ class TestLocalDriveSource:
         with pytest.raises(ValueError, match="目录不存在"):
             LocalDriveSource(input_dir="/nonexistent/path")
 
+    def test_fetch_text_file(self, tmp_path):
+        (tmp_path / "test.md").write_text("hello world", encoding="utf-8")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        docs = source.list_documents()
+        doc = source.fetch(docs[0])
+        assert isinstance(doc.content, str)
+        assert doc.content == "hello world"
+        assert doc.content_type == "md"
+
+    def test_fetch_binary_file(self, tmp_path):
+        (tmp_path / "test.pdf").write_bytes(b"%PDF-1.4 fake content")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        docs = source.list_documents()
+        doc = source.fetch(docs[0])
+        assert isinstance(doc.content, bytes)
+        assert doc.content_type == "pdf"
+
+    def test_fetch_metadata(self, tmp_path):
+        (tmp_path / "report.pdf").write_bytes(b"%PDF fake")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        docs = source.list_documents()
+        assert docs[0].title == "report"
+        assert docs[0].extra["extension"] == "pdf"
+        assert docs[0].extra["size"] > 0
+        assert "report.pdf" in docs[0].path
+
+    def test_include_filter(self, tmp_path):
+        (tmp_path / "a.md").write_text("md")
+        (tmp_path / "b.pdf").write_bytes(b"pdf")
+        (tmp_path / "c.docx").write_bytes(b"docx")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path), include=["*.md", "*.pdf"])
+        docs = source.list_documents()
+        titles = {d.title for d in docs}
+        assert titles == {"a", "b"}
+
+    def test_exclude_filter(self, tmp_path):
+        (tmp_path / "a.md").write_text("md")
+        (tmp_path / "b.pdf").write_bytes(b"pdf")
+        (tmp_path / "c.docx").write_bytes(b"docx")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path), exclude=["*.pdf"])
+        docs = source.list_documents()
+        titles = {d.title for d in docs}
+        assert titles == {"a", "c"}
+
+    def test_exclude_overrides_include(self, tmp_path):
+        (tmp_path / "a.md").write_text("md")
+        (tmp_path / "b.pdf").write_bytes(b"pdf")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(
+            input_dir=str(tmp_path),
+            include=["*.md", "*.pdf"],
+            exclude=["*.pdf"],
+        )
+        docs = source.list_documents()
+        titles = {d.title for d in docs}
+        assert titles == {"a"}
+
+    def test_no_filters_includes_all(self, tmp_path):
+        (tmp_path / "a.md").write_text("md")
+        (tmp_path / "b.pdf").write_bytes(b"pdf")
+        (tmp_path / "c.py").write_text("print('hi')")
+
+        from docpipe.sources.localdrive import LocalDriveSource
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        docs = source.list_documents()
+        assert len(docs) == 3
+
 
 class TestPipelineTypeRules:
     def test_skip_unknown_type(self, tmp_path):
