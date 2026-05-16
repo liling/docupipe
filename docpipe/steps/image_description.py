@@ -39,12 +39,10 @@ class ImageDescriptionStep(PipelineStep):
                 short_name = image_item.name.split("/")[-1]
                 image_files[short_name] = image_item
 
-        # 从 context 获取图片目录（用于旧 Document 模型的向后兼容）
-        images_dir = bundle.context.get("_images_dir")
         source_context = bundle.context.get("source_context", "")
 
         new_content, image_metadata = self._processor.process(
-            content, source_context, images_dir=images_dir, image_files=image_files,
+            content, source_context, image_files=image_files,
         )
 
         # 更新 main 内容
