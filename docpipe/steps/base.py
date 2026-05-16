@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from docpipe.models import Document
+from docpipe.models import Bundle
 
 
 class PipelineStep(ABC):
     name: str = ""
 
     @abstractmethod
-    def process(self, doc: Document) -> Document:
-        """处理文档，返回处理后的文档"""
+    def process(self, bundle: Bundle) -> Bundle:
+        """处理文档包，返回处理后的文档包"""

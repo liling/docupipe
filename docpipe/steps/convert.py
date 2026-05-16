@@ -6,11 +6,21 @@ import re
 import tempfile
 from pathlib import Path
 
-from docpipe.models import Document
+from docpipe.models import Bundle, FileItem
 from docpipe.steps import register_step
 from docpipe.steps.base import PipelineStep
 
 logger = logging.getLogger(__name__)
+
+
+def _mime_to_ext(mime: str) -> str:
+    mapping = {"png": ".png", "jpeg": ".jpg", "jpg": ".jpg", "gif": ".gif", "webp": ".webp", "x-emf": ".emf"}
+    return mapping.get(mime, f".{mime}")
+
+
+def _replace_extension(name: str, new_ext: str) -> str:
+    p = Path(name)
+    return f"{p.stem}{new_ext}"
 
 
 @register_step("convert")
@@ -18,55 +28,67 @@ class ConvertStep(PipelineStep):
     def __init__(self, extension_rules: dict[str, str] | None = None, **kwargs):
         self._extension_rules = extension_rules or {}
 
-    def needs_conversion(self, doc: Document) -> bool:
-        ext = doc.meta.extra.get("extension", "")
+    def needs_conversion(self, bundle: Bundle) -> bool:
+        ext = bundle.context.get("extension", "")
         key = f".{ext}" if ext else ""
         rule = self._extension_rules.get(key)
         return rule is not None and rule != "source"
 
-    def process(self, doc: Document) -> Document:
-        ext = doc.meta.extra.get("extension", "")
+    def process(self, bundle: Bundle) -> Bundle:
+        main = bundle.main
+        if not main:
+            logger.warning("convert step: Bundle 无主文件，跳过转换")
+            return bundle
+
+        ext = bundle.context.get("extension", "")
         key = f".{ext}" if ext else ""
         converter_name = self._extension_rules.get(key)
 
         if not converter_name or converter_name == "source":
-            return doc
+            return bundle
 
         from docpipe.converters import get_converter
         converter_cls = get_converter(converter_name)
         converter = converter_cls()
 
-        file_path = doc.meta.extra.get("_temp_file") or doc.meta.extra.get("absolute_path")
-        if not file_path:
-            logger.warning("convert step: 无文件路径，跳过转换: %s", doc.meta.title)
-            return doc
+        # 写临时文件给 converter 使用
+        if not isinstance(main.content, bytes):
+            logger.warning("convert step: 主文件内容不是 bytes，跳过转换")
+            return bundle
 
-        file_path = Path(file_path)
+        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+            tmp_file.write(main.content)
+            tmp_file.flush()
+            temp_path = Path(tmp_file.name)
+
         try:
-            doc.content = converter.convert(file_path)
-            doc.content_type = "markdown"
+            markdown = converter.convert(temp_path)
+
+            # 提取内联图片并创建 FileItem
+            if isinstance(markdown, str):
+                markdown, images = self._extract_inline_images(markdown)
+
+                # 将图片文件加入 Bundle
+                for img in images:
+                    bundle.add(img)
+
+            # 更新主文件内容
+            main.content = markdown
+            main.content_type = "text/markdown"
+            main.name = _replace_extension(main.name, ".md")
         finally:
-            if doc.meta.extra.get("_temp_file"):
-                file_path.unlink(missing_ok=True)
+            temp_path.unlink(missing_ok=True)
 
-        if isinstance(doc.content, str):
-            doc.content = self._extract_inline_images(doc)
+        return bundle
 
-        return doc
-
-    def _extract_inline_images(self, doc: Document) -> str:
-        """将 markdown 中的 data:image base64 内联图片提取到磁盘，替换为相对路径"""
-        content = doc.content
-        if not isinstance(content, str) or "data:image" not in content:
-            return content
-
-        tmp_dir = tempfile.mkdtemp(prefix="docpipe_images_")
-        images_dir = Path(tmp_dir) / "images"
-        images_dir.mkdir(parents=True, exist_ok=True)
-        doc.meta.extra["_images_dir"] = str(Path(tmp_dir))
+    def _extract_inline_images(self, markdown: str) -> tuple[str, list[FileItem]]:
+        """从 markdown 中提取 data:image base64 内联图片，返回(更新后的markdown, FileItem列表)"""
+        if "data:image" not in markdown:
+            return markdown, []
 
         pattern = r'!\[([^\]]*)\]\((data:image/([^;]+);base64,([^)]+))\)'
         counter = 0
+        images: list[FileItem] = []
 
         def replace_inline(match: re.Match) -> str:
             nonlocal counter
@@ -77,21 +99,21 @@ class ConvertStep(PipelineStep):
             ext = _mime_to_ext(mime_type)
             counter += 1
             filename = f"image_{counter}{ext}"
-            filepath = images_dir / filename
 
             try:
                 image_bytes = base64.b64decode(b64_data)
-                filepath.write_bytes(image_bytes)
+                img_item = FileItem(
+                    name=filename,
+                    content=image_bytes,
+                    content_type=f"image/{mime_type}",
+                    role="image"
+                )
+                images.append(img_item)
             except Exception as e:
                 logger.warning("提取内联图片失败: %s", e)
                 return match.group(0)
 
             return f"![{alt}](images/{filename})"
 
-        new_content = re.sub(pattern, replace_inline, content)
-        return new_content
-
-
-def _mime_to_ext(mime: str) -> str:
-    mapping = {"png": ".png", "jpeg": ".jpg", "jpg": ".jpg", "gif": ".gif", "webp": ".webp", "x-emf": ".emf"}
-    return mapping.get(mime, f".{mime}")
+        new_markdown = re.sub(pattern, replace_inline, markdown)
+        return new_markdown, images
