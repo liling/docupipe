@@ -655,3 +655,87 @@ class TestPipelineTypeRules:
         pipeline = Pipeline(source, dest, tmp_path)
         pipeline.run()
         assert len(dest.written) == 1
+
+
+class TestEnvInterpolation:
+    def test_resolve_simple(self, monkeypatch):
+        monkeypatch.setenv("MY_KEY", "secret123")
+        from docpipe.config import resolve_env_vars
+        assert resolve_env_vars("${MY_KEY}") == "secret123"
+
+    def test_resolve_with_default(self, monkeypatch):
+        monkeypatch.delenv("MISSING_KEY", raising=False)
+        from docpipe.config import resolve_env_vars
+        assert resolve_env_vars("${MISSING_KEY:-fallback}") == "fallback"
+
+    def test_resolve_existing_overrides_default(self, monkeypatch):
+        monkeypatch.setenv("MY_KEY", "actual")
+        from docpipe.config import resolve_env_vars
+        assert resolve_env_vars("${MY_KEY:-fallback}") == "actual"
+
+    def test_resolve_missing_no_default_keeps_original(self):
+        from docpipe.config import resolve_env_vars
+        assert resolve_env_vars("${NONEXISTENT_VAR_XYZ}") == "${NONEXISTENT_VAR_XYZ}"
+
+    def test_resolve_nested_dict(self, monkeypatch):
+        monkeypatch.setenv("URL", "http://localhost")
+        from docpipe.config import resolve_env_vars
+        config = {"api_url": "${URL}", "nested": {"key": "${URL}/path"}}
+        result = resolve_env_vars(config)
+        assert result == {"api_url": "http://localhost", "nested": {"key": "http://localhost/path"}}
+
+    def test_resolve_in_list(self, monkeypatch):
+        monkeypatch.setenv("KEY", "val")
+        from docpipe.config import resolve_env_vars
+        assert resolve_env_vars(["${KEY}", "plain"]) == ["val", "plain"]
+
+    def test_resolve_non_string_unchanged(self):
+        from docpipe.config import resolve_env_vars
+        assert resolve_env_vars(42) == 42
+        assert resolve_env_vars(True) is True
+        assert resolve_env_vars(None) is None
+
+
+class TestDeepMerge:
+    def test_simple_override(self):
+        from docpipe.config import deep_merge
+        assert deep_merge({"a": 1, "b": 2}, {"b": 3}) == {"a": 1, "b": 3}
+
+    def test_nested_merge(self):
+        from docpipe.config import deep_merge
+        base = {"api_url": "http://default", "bank_id": "default_bank", "nested": {"a": 1, "b": 2}}
+        override = {"bank_id": "my_bank", "nested": {"b": 3, "c": 4}}
+        result = deep_merge(base, override)
+        assert result == {"api_url": "http://default", "bank_id": "my_bank", "nested": {"a": 1, "b": 3, "c": 4}}
+
+    def test_empty_override(self):
+        from docpipe.config import deep_merge
+        assert deep_merge({"a": 1}, {}) == {"a": 1}
+
+
+class TestParseComponentConfig:
+    def test_simple_parse(self):
+        from docpipe.config import parse_component_config
+        type_name, config = parse_component_config(
+            {"source": {"localdrive": {"input_dir": "./docs"}}},
+            {},
+            "source",
+        )
+        assert type_name == "localdrive"
+        assert config == {"input_dir": "./docs"}
+
+    def test_merge_with_global(self):
+        from docpipe.config import parse_component_config
+        type_name, config = parse_component_config(
+            {"destination": {"hindsight": {"bank_id": "my_bank"}}},
+            {"hindsight": {"api_url": "http://default", "api_key": "secret"}},
+            "destination",
+        )
+        assert type_name == "hindsight"
+        assert config == {"api_url": "http://default", "api_key": "secret", "bank_id": "my_bank"}
+
+    def test_missing_component_raises(self):
+        from docpipe.config import parse_component_config
+        import pytest
+        with pytest.raises(ValueError, match="缺少"):
+            parse_component_config({}, {}, "source")
