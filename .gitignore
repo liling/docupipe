@@ -6,3 +6,4 @@ output/
 .claude/skills/
 docpipe.yaml
 .*.swp
+.superpowers/
