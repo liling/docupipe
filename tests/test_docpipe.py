@@ -345,7 +345,7 @@ class TestRegistration:
     def test_sources_registered(self):
         from docpipe.sources import SOURCES
         assert "dingtalk" in SOURCES
-        assert "local" in SOURCES
+        assert "localdrive" in SOURCES
 
     def test_destinations_registered(self):
         from docpipe.destinations import DESTINATIONS

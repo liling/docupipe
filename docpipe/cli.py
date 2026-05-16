@@ -169,7 +169,7 @@ def _extract_source_config(source_name, kwargs):
             config["image_description_api_key"] = kwargs.get("image_description_api_key", "")
             config["image_description_base_url"] = kwargs.get("image_description_base_url", "")
             config["image_description_model"] = kwargs.get("image_description_model", "gpt-4o")
-    elif source_name == "local":
+    elif source_name in ("local", "localdrive"):
         if kwargs.get("input_dir"):
             config["input_dir"] = kwargs["input_dir"]
     return config
