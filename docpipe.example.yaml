@@ -1,0 +1,39 @@
+hindsight:
+  api_url: ${HINDSIGHT_API_URL}
+  api_key: ${HINDSIGHT_API_KEY}
+  bank_id: ${HINDSIGHT_BANK_ID}
+
+image_description:
+  api_key: ${IMAGE_DESCRIPTION_API_KEY}
+  base_url: ${IMAGE_DESCRIPTION_BASE_URL}
+  model: ${IMAGE_DESCRIPTION_MODEL:-gpt-4o}
+
+converters:
+  extensions:
+    ".pdf": mineru
+    ".docx": markitdown
+    ".pptx": mineru
+    ".xlsx": mineru
+
+pipelines:
+
+  - name: dingtalk-to-local
+    source:
+      dingtalk:
+        space_id: YOUR_SPACE_ID
+        folders: ["文件夹名称"]
+        include_types: [DOCUMENT, ALIDOC]
+    destination:
+      localdrive:
+        output_dir: ./output/dingtalk
+    steps: []
+
+  - name: local-to-hindsight
+    source:
+      localdrive:
+        input_dir: ./output/dingtalk
+        include: ["*.md"]
+    destination:
+      hindsight:
+        context_prefix: "文档"
+    steps: []
