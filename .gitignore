@@ -7,3 +7,4 @@ output/
 docpipe.yaml
 .*.swp
 .superpowers/
+.DS_Store
