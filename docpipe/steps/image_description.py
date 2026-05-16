@@ -12,9 +12,10 @@ logger = logging.getLogger(__name__)
 
 @register_step("image_description")
 class ImageDescriptionStep(PipelineStep):
-    def __init__(self, api_key: str = "", base_url: str = "", model: str = "gpt-4o", **kwargs):
+    def __init__(self, api_key: str = "", base_url: str = "", model: str = "gpt-4o",
+                 concurrency: int = 1, **kwargs):
         vision_client = OpenAIVisionClient(api_key=api_key, base_url=base_url, model=model)
-        self._processor = ImagePostProcessor(vision_client)
+        self._processor = ImagePostProcessor(vision_client, concurrency=concurrency)
 
     def process(self, bundle: Bundle) -> Bundle:
         main_item = bundle.main

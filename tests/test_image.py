@@ -8,6 +8,7 @@ import pytest
 
 from docpipe.image import OpenAIVisionClient, ImagePostProcessor, validate_image
 from docpipe.models import FileItem
+from docpipe.steps.image_description import ImageDescriptionStep
 
 
 class TestOpenAIVisionClient:
@@ -352,3 +353,22 @@ class TestValidateImage:
         result = validate_image(jpg_data)
         if result is not None:
             assert result == jpg_data or len(result) > 0
+
+
+class TestImageDescriptionStepConcurrency:
+    def test_passes_concurrency_to_processor(self):
+        step = ImageDescriptionStep(
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+            model="gpt-4o",
+            concurrency=8,
+        )
+        assert step._processor.concurrency == 8
+
+    def test_default_concurrency_is_one(self):
+        step = ImageDescriptionStep(
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+            model="gpt-4o",
+        )
+        assert step._processor.concurrency == 1
