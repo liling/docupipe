@@ -25,6 +25,20 @@ docupipe 为解决这些问题提供了一个通用的、可扩展的框架。
 
 ## 安装
 
+### 通过 pip 安装（推荐）
+
+```bash
+pip install docupipe
+```
+
+如需处理内含图片的 PDF（需 OCR 识别），安装可选依赖：
+
+```bash
+pip install "docupipe[mineru]"
+```
+
+### 通过源代码安装
+
 ```bash
 # 克隆项目
 git clone <repository-url>
@@ -34,7 +48,7 @@ cd docupipe
 pip install uv
 uv pip install -e ".[dev]"
 
-# 如需处理 PDF 文件，安装 MinerU 依赖
+# 如需处理内含图片的 PDF（需 OCR 识别），安装 MinerU 依赖
 uv pip install -e ".[mineru]"
 
 # 或安装所有可选依赖
@@ -344,6 +358,7 @@ class CustomSource(BaseSource):
 - Rich（终端输出）
 - PyYAML（配置解析）
 - markitdown（文档转换）
+- MinerU（内含图片的 PDF OCR 转换）
 - hindsight-client（HindSight Memory 客户端）
 - OpenAI SDK（图片描述）
 
