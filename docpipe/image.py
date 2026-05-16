@@ -228,9 +228,9 @@ class ImagePostProcessor:
         # Phase 2: Describe
         image_bytes_list = [img_bytes for _, _, img_bytes in processable]
         if self.concurrency > 1:
-            results = asyncio.run(self._run_concurrent(image_bytes_list, source_context))
+            results = asyncio.run(self._run_concurrent(image_bytes_list, source_context, progress_callback, total))
         else:
-            results = self._run_sync(image_bytes_list, source_context)
+            results = self._run_sync(image_bytes_list, source_context, progress_callback, total)
 
         # Phase 3: Build replacements and metadata
         replacements: dict[int, str] = {}
@@ -250,12 +250,7 @@ class ImagePostProcessor:
                 new_url = full_filename
             replacements[idx] = f"![{description}]({new_url})"
 
-        # Phase 4: Progress callback
-        if progress_callback and total > 0:
-            done = sum(1 for r in results if r[0] is not None)
-            progress_callback(f"image_description ({done}/{total})")
-
-        # Phase 5: Rebuild markdown
+        # Phase 3: Rebuild markdown
         parts: list[str] = []
         last_end = 0
         for i, match in enumerate(all_matches):
@@ -269,27 +264,37 @@ class ImagePostProcessor:
 
         return "".join(parts), image_metadata
 
-    def _run_sync(self, image_bytes_list: list[bytes], source_context: str) -> list[tuple[str | None, str | None]]:
+    def _run_sync(self, image_bytes_list: list[bytes], source_context: str,
+                  progress_callback=None, total: int = 0) -> list[tuple[str | None, str | None]]:
         results: list[tuple[str | None, str | None]] = []
-        for img_bytes in image_bytes_list:
+        for i, img_bytes in enumerate(image_bytes_list):
             try:
                 filename, description = self.vision_client.describe(img_bytes, source_context)
                 results.append((filename, description))
             except Exception as e:
                 logger.warning("图片描述失败: %s", e)
                 results.append((None, None))
+            if progress_callback and total > 0:
+                progress_callback(f"image_description ({i + 1}/{total})")
         return results
 
-    async def _run_concurrent(self, image_bytes_list: list[bytes], source_context: str) -> list[tuple[str | None, str | None]]:
+    async def _run_concurrent(self, image_bytes_list: list[bytes], source_context: str,
+                              progress_callback=None, total: int = 0) -> list[tuple[str | None, str | None]]:
         sem = asyncio.Semaphore(self.concurrency)
+        done_count = 0
 
         async def describe_one(img_bytes: bytes) -> tuple[str | None, str | None]:
+            nonlocal done_count
             async with sem:
                 try:
-                    return await self.vision_client.a_describe(img_bytes, source_context)
+                    result = await self.vision_client.a_describe(img_bytes, source_context)
                 except Exception as e:
                     logger.warning("图片描述失败: %s", e)
-                    return (None, None)
+                    result = (None, None)
+            done_count += 1
+            if progress_callback and total > 0:
+                progress_callback(f"image_description ({done_count}/{total})")
+            return result
 
         return await asyncio.gather(*[describe_one(b) for b in image_bytes_list])
 
