@@ -11,11 +11,21 @@ converters:
   extensions:
     ".pdf": mineru
     ".docx": markitdown
-    ".pptx": mineru
-    ".xlsx": mineru
-    ".doc": mineru
-    ".xls": mineru
-    ".ppt": mineru
+    ".pptx": markitdown
+    ".xlsx": markitdown
+    ".doc": markitdown
+    ".xls": markitdown
+    ".ppt": markitdown
+
+s3_upload:
+  endpoint_url: ${S3_ENDPOINT:-http://localhost:9000}
+  region: ${S3_REGION:-us-east-1}
+  bucket: ${S3_BUCKET:-hindsight}
+  access_key: rustfsadmin
+  secret_key: rustfsadmin
+  prefix: attachments
+  url_prefix: ${S3_URL_PREFIX:-http://localhost:9000}
+  roles: ["image"]
 
 pipelines:
 
@@ -23,7 +33,7 @@ pipelines:
   - name: dingtalk-download
     source:
       dingtalk:
-        space_id: nb9XJB7qpnkxQXyA
+        space: 平台产品知识库
         # folders: ["产品规划物料"]
         include_types: [DOCUMENT, ALIDOC]
     destination:
@@ -36,21 +46,23 @@ pipelines:
     source:
       localdrive:
         input_dir: ./output/dingtalk
-        include: ["*.docx"]
+        include: ["*.docx", "*.pptx", "*.xlsx", "*.pdf", "*.md"]
     destination:
       localdrive:
         output_dir: ./output/markdown
     steps:
       - convert
-      - image_description
+      # - image_description
 
-  # 阶段 3: localdrive → hindsight（*.md 直接 retain）
+  # 阶段 3: localdrive → hindsight（上传附件到 S3，再推送到 Hindsight）
   - name: markdown-to-hindsight
     source:
       localdrive:
-        input_dir: ./output/markdown
+        input_dir: ./output/markdown/平台产品知识库/产品规划物料/解决方案
         include: ["*.md"]
     destination:
       hindsight:
-        context_prefix: "数据线知识库文档"
-    steps: []
+        context_prefix: "平台产品知识库"
+    steps:
+      - resolve_attachments
+      - s3_upload
