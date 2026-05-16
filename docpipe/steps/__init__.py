@@ -25,3 +25,4 @@ def get_step(name: str) -> type[PipelineStep]:
 # 自动注册内置 step
 import docpipe.steps.convert  # noqa: F401, E402
 import docpipe.steps.image_description  # noqa: F401, E402
+import docpipe.steps.s3_upload  # noqa: F401, E402
