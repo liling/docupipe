@@ -41,7 +41,7 @@ pip install "docupipe[mineru]"
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/liling/docupipe.git
 cd docupipe
 
 # Install dependencies (uv recommended)

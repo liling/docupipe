@@ -41,7 +41,7 @@ pip install "docupipe[mineru]"
 
 ```bash
 # 克隆项目
-git clone <repository-url>
+git clone https://github.com/liling/docupipe.git
 cd docupipe
 
 # 安装依赖（推荐使用 uv）
