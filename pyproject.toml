@@ -1,6 +1,6 @@
 [project]
 name = "docupipe"
-version = "0.1.0"
+version = "0.1.1"
 description = "A universal document transfer pipeline tool that retrieves content from various document sources, processes it through configurable steps, and transfers it to multiple destination systems"
 readme = "README.en.md"
 requires-python = ">=3.11"
