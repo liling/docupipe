@@ -32,6 +32,32 @@ class _WikiClient:
             return {}
         return json.loads(stdout)
 
+    def list_spaces(self) -> list[dict]:
+        """列出所有知识库"""
+        data = self._run_dws(["wiki", "space", "list"])
+        if isinstance(data, dict):
+            return data.get("wikiSpaces", [])
+        return data if isinstance(data, list) else []
+
+    def resolve_space_name(self, space_name: str) -> str | None:
+        """根据知识库名称解析 workspace ID"""
+        spaces = self.list_spaces()
+        # 精确匹配
+        for space in spaces:
+            if space.get("name") == space_name:
+                space_id = space.get("workspaceId")
+                logger.info("知识库名称匹配: '%s' → %s", space_name, space_id)
+                return space_id
+        # 模糊匹配（包含关键词）
+        for space in spaces:
+            if space_name in space.get("name", ""):
+                space_id = space.get("workspaceId")
+                matched_name = space.get("name")
+                logger.info("知识库名称模糊匹配: '%s' → '%s' (%s)", space_name, matched_name, space_id)
+                return space_id
+        logger.warning("未找到匹配的知识库: '%s'", space_name)
+        return None
+
     def list_nodes(self, workspace_id: str, folder_id: str | None = None, folder_name: str = "", workspace_name: str = "") -> list[dict]:
         all_items: list[dict] = []
         page_token: str | None = None
@@ -82,16 +108,32 @@ class _WikiClient:
 
 @register_source("dingtalk")
 class DingtalkSource(SourceBase):
-    def __init__(self, space_id: str, folder_id: str | None = None, folders: list[str] | None = None,
+    def __init__(self, space: str | None = None, space_id: str | None = None,
+                 folder_id: str | None = None, folders: list[str] | None = None,
                  include_types: list[str] | None = None, **kwargs):
-        self._space_id = space_id
+        # 支持通过 space 名称或 space_id 指定知识库
+        if space and space_id:
+            logger.warning("同时提供了 space 和 space_id，将优先使用 space")
+        if space:
+            # 通过名称解析 ID
+            resolved_id = _WikiClient().resolve_space_name(space)
+            if not resolved_id:
+                raise ValueError(f"无法找到知识库: '{space}'")
+            self._space_id = resolved_id
+            self._space_name = space
+        elif space_id:
+            self._space_id = space_id
+            self._space_name = ""
+        else:
+            raise ValueError("必须提供 space 或 space_id 参数")
+
         self._folder_id = folder_id
         self._folders = folders
         self._include_types = set(include_types) if include_types else None
         self._client = _WikiClient()
-        self._space_name = ""
 
     def list(self) -> list[BundleMeta]:
+        # 如果通过 space_id 传入且没有名称，尝试获取名称
         if not self._space_name:
             try:
                 space_info = self._client.get_space_info(self._space_id)

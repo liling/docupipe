@@ -12,15 +12,18 @@ converters:
   extensions:
     ".pdf": mineru
     ".docx": markitdown
-    ".pptx": mineru
-    ".xlsx": mineru
+    ".pptx": markitdown
+    ".xlsx": markitdown
 
 pipelines:
 
   - name: dingtalk-to-local
     source:
       dingtalk:
-        space_id: YOUR_SPACE_ID
+        # 支持使用知识库名称（程序自动查询 ID）
+        space: "平台产品知识库"
+        # 或者直接使用 space_id
+        # space_id: "nb9XJB7qpnkxQXyA"
         folders: ["文件夹名称"]
         include_types: [DOCUMENT, ALIDOC]
     destination:

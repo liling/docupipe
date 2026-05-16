@@ -24,7 +24,7 @@ pipelines:
     source:
       dingtalk:
         space_id: nb9XJB7qpnkxQXyA
-        folders: ["产品规划物料"]
+        # folders: ["产品规划物料"]
         include_types: [DOCUMENT, ALIDOC]
     destination:
       localdrive:
