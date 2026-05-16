@@ -7,7 +7,7 @@ from pathlib import Path
 
 from docpipe.destinations.base import DestinationBase
 from docpipe.display import Display
-from docpipe.models import Document, DocumentMeta, SkipDocument
+from docpipe.models import Bundle, BundleMeta, SkipBundle
 from docpipe.sources.base import SourceBase
 
 logger = logging.getLogger(__name__)
@@ -66,20 +66,17 @@ class StateManager:
         self.save(entries)
 
 
-class ContentTypeStrategy:
-    """钉钉 contentType 到处理动作的映射"""
-
-    def __init__(self, rules: dict[str, str] | None = None):
-        self._rules = rules or {}
-
-    def resolve(self, content_type: str) -> str | None:
-        return self._rules.get(content_type)
-
-
 def content_hash(content: str | bytes) -> str:
     if isinstance(content, str):
         content = content.encode("utf-8")
     return hashlib.sha256(content).hexdigest()
+
+
+def bundle_hash(bundle: Bundle) -> str:
+    """从 Bundle 的主文件内容计算 hash"""
+    if bundle.main is None:
+        return ""
+    return content_hash(bundle.main.content)
 
 
 class Pipeline:
@@ -90,134 +87,67 @@ class Pipeline:
         state_dir: Path,
         display: Display | None = None,
         steps: list | None = None,
-        type_resolver=None,
-        content_type_strategy: ContentTypeStrategy | None = None,
     ):
         self.source = source
         self.dest = dest
         self.state = StateManager(state_dir / f"{source.name}_{dest.name}_state.json")
         self._display = display or Display()
         self._steps = steps
-        self._type_resolver = type_resolver
-        self._content_type_strategy = content_type_strategy
-
-    def _resolve_type(self, doc_meta):
-        ext_raw = doc_meta.extra.get("extension", "")
-        extension = f".{ext_raw}" if ext_raw else ""
-        mime_type = doc_meta.extra.get("contentType", "")
-        return self._type_resolver.resolve(extension, mime_type)
-
-    def _process_with_legacy_rules(self, doc: Document, doc_meta: DocumentMeta) -> Document | None:
-        """CLI 参数模式的旧逻辑，返回 None 表示跳过"""
-        converter_name = None
-        if self._content_type_strategy:
-            ct = doc_meta.extra.get("contentType", "")
-            action = self._content_type_strategy.resolve(ct)
-            if action is None or action == "skip":
-                self._display.result("skip", f"{doc_meta.path} [contentType={ct or '未知'}]")
-                return None
-            if action == "convert" and self._type_resolver:
-                converter_name = self._resolve_type(doc_meta)
-                if converter_name == "skip":
-                    self._display.result("skip", f"{doc_meta.path} [无匹配 converter]")
-                    return None
-                if converter_name == "source":
-                    converter_name = None
-            # action == "source", "download", or convert with no resolver: no conversion
-        elif self._type_resolver:
-            converter_name = self._resolve_type(doc_meta)
-            if converter_name is None:
-                self._display.result("skip", f"{doc_meta.path} [无匹配 converter]")
-                return None
-            if converter_name == "skip":
-                self._display.result("skip", f"{doc_meta.path} [无匹配 converter]")
-                return None
-            if converter_name == "source":
-                converter_name = None
-
-        # 仅在 Source 标记需要转换时执行 converter
-        if doc.meta.extra.get("_needs_conversion") and converter_name:
-            return self._run_converter(doc, converter_name)
-        return doc
-
-    def _run_converter(self, doc: Document, converter_name: str) -> Document:
-        """执行 converter 转换"""
-        from docpipe.converters import get_converter
-        converter_cls = get_converter(converter_name)
-        converter = converter_cls()
-        file_path = Path(doc.meta.extra.get("_temp_file", doc.meta.extra.get("absolute_path", "")))
-        try:
-            doc.content = converter.convert(file_path)
-            doc.content_type = "markdown"
-        finally:
-            if doc.meta.extra.get("_temp_file"):
-                file_path.unlink(missing_ok=True)
-        return doc
 
     def run(self, *, resume: bool = False, sync: bool = False, dry_run: bool = False) -> None:
         logger.info("Pipeline 开始: %s → %s (resume=%s, sync=%s, dry_run=%s)",
                      self.source.name, self.dest.name, resume, sync, dry_run)
-        docs = self.source.list_documents()
+        metas = self.source.list()
 
         if resume:
-            docs = [d for d in docs if not self.state.is_processed(d.id)]
+            metas = [m for m in metas if not self.state.is_processed(m.id)]
 
-        logger.info("待处理文档: %d 个", len(docs))
+        logger.info("待处理文档: %d 个", len(metas))
 
-        self._display.start(f"Pipeline: {self.source.name} → {self.dest.name}", len(docs))
+        self._display.start(f"Pipeline: {self.source.name} → {self.dest.name}", len(metas))
 
-        for doc_meta in docs:
-            if sync and self.state.is_unchanged(doc_meta.id, doc_meta.hash):
-                self._display.result("skip", f"{doc_meta.path} (无变化)")
+        for meta in metas:
+            if sync and self.state.is_unchanged(meta.id, meta.hash):
+                self._display.result("skip", f"{meta.path} (无变化)")
                 continue
 
-            _display_path = doc_meta.path
+            _display_path = meta.path
             self._display.set_current(_display_path)
             try:
-                doc = self.source.fetch(doc_meta)
+                bundle = self.source.fetch(meta)
 
+                # 设置 Bundle 的通用上下文字段
+                bundle.context["id"] = meta.id
+                bundle.context["title"] = meta.title
+                bundle.context["path"] = meta.path
+                bundle.context["_source"] = self.source.name
+
+                # 运行处理步骤
                 if self._steps is not None:
                     for step in self._steps:
-                        doc = step.process(doc)
-                    # steps 处理完后，如果 _temp_file 还在（没有 convert step 处理），读取文件内容
-                    if not doc.content and doc.meta.extra.get("_temp_file"):
-                        f = Path(doc.meta.extra["_temp_file"])
-                        try:
-                            doc.content = f.read_bytes()
-                            ext = doc.meta.extra.get("extension", "")
-                            doc.content_type = ext
-                        finally:
-                            f.unlink(missing_ok=True)
-                elif self._type_resolver or self._content_type_strategy:
-                    doc = self._process_with_legacy_rules(doc, doc_meta)
-                    if doc is None:
-                        continue
+                        bundle = step.process(bundle)
 
-                # 如果有 steps 处理过，基于最终内容重新计算 hash
-                if self._steps is not None:
-                    doc.meta.hash = content_hash(doc.content)
-                elif not doc.meta.hash:
-                    doc.meta.hash = content_hash(doc.content)
-                doc.meta.extra["_source"] = self.source.name
+                # 计算最终 hash
+                bundle_hash_value = bundle_hash(bundle)
 
                 if dry_run:
                     self._display.result("info", f"[dry-run] {_display_path}")
                 else:
-                    self.dest.write(doc)
+                    self.dest.write(bundle)
                     self._display.result("success", _display_path)
-                    self.state.mark_done(doc_meta.id, doc.meta.hash, doc_meta.path)
-            except SkipDocument as e:
-                logger.info("跳过文档: %s - %s", doc_meta.path, e)
-                self._display.result("skip", f"{doc_meta.path} ({e})")
+                    self.state.mark_done(meta.id, bundle_hash_value, meta.path)
+            except SkipBundle as e:
+                logger.info("跳过文档: %s - %s", meta.path, e)
+                self._display.result("skip", f"{meta.path} ({e})")
             except Exception as e:
-                logger.error("文档处理失败: %s - %s", doc_meta.path, e)
-                self._display.result("error", f"{doc_meta.path}: {e}")
+                logger.error("文档处理失败: %s - %s", meta.path, e)
+                self._display.result("error", f"{meta.path}: {e}")
                 self._display.add_failure()
             finally:
                 self._display.clear_current(_display_path)
 
         if sync:
-            removed = self.state.find_removed([d.id for d in docs])
+            removed = self.state.find_removed([m.id for m in metas])
             for doc_id in removed:
                 doc_path = self.state.get_path(doc_id) or doc_id
                 try:
