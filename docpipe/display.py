@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 
-from rich.console import Console, Group
+from rich.console import Console
 from rich.live import Live
 from rich.progress import (
     BarColumn,
@@ -29,6 +29,20 @@ def _format_duration(seconds: float) -> str:
     m = total // 60
     s = total % 60
     return f"{m}分{s:02d}秒"
+
+
+class _DynamicRenderable:
+    """每次渲染时读取 Display 最新状态，避免反复调用 _live.update() 导致光标偏移。"""
+
+    def __init__(self, display: Display):
+        self._display = display
+
+    def __rich_console__(self, console, options):
+        yield self._display._progress
+        yield self._display._build_stats_line()
+        current = self._display._build_current_lines()
+        if current:
+            yield current
 
 
 class Display:
@@ -74,7 +88,7 @@ class Display:
         )
         self._progress_task_id = self._progress.add_task(title, total=total)
         self._live = Live(
-            self._build_renderable(),
+            _DynamicRenderable(self),
             console=self._console,
             refresh_per_second=4,
             transient=False,
@@ -120,14 +134,10 @@ class Display:
             self._advance_progress()
 
     def set_step(self, label: str) -> None:
-        with self._lock:
-            self._step_info = label
-            self._refresh_live()
+        self._step_info = label
 
     def clear_step(self) -> None:
-        with self._lock:
-            self._step_info = ""
-            self._refresh_live()
+        self._step_info = ""
 
     def set_current(self, label: str) -> None:
         if not self._is_tty:
@@ -135,7 +145,6 @@ class Display:
         with self._lock:
             if label not in self._current_tasks:
                 self._current_tasks.append(label)
-            self._refresh_live()
 
     def clear_current(self, label: str) -> None:
         if not self._is_tty:
@@ -143,7 +152,6 @@ class Display:
         with self._lock:
             if label in self._current_tasks:
                 self._current_tasks.remove(label)
-            self._refresh_live()
 
     def print_summary(self) -> None:
         elapsed = time.time() - self._start_time
@@ -171,7 +179,6 @@ class Display:
                 self._progress_task_id,
                 description=f"{self._title} {done}/{self.total}",
             )
-            self._refresh_live()
 
     def _print(self, text: str) -> None:
         if self._live:
@@ -181,16 +188,6 @@ class Display:
                 self._live.console.print(text, markup=False)
         else:
             print(text)
-
-    def _build_renderable(self):
-        elements = [self._progress]
-        stats = self._build_stats_line()
-        if stats:
-            elements.append(stats)
-        current = self._build_current_lines()
-        if current:
-            elements.append(current)
-        return Group(*elements)
 
     def _build_stats_line(self) -> Text:
         parts = []
@@ -216,6 +213,3 @@ class Display:
             lines.append("\n")
         return lines
 
-    def _refresh_live(self) -> None:
-        if self._live:
-            self._live.update(self._build_renderable())

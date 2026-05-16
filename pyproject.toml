@@ -17,17 +17,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-]
-dependencies = [
-    "click>=8.1.0",
-    "markitdown>=0.1.0",
-    "hindsight-client>=0.1.0",
-    "rich>=13.0.0",
-    "python-dotenv>=1.0.0",
-    "pyyaml>=6.0",
-    "requests>=2.31.0",
-    "openai>=1.0.0",
-    "boto3>=1.28.0",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "click>=8.1.0",

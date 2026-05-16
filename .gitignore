@@ -8,3 +8,5 @@ docpipe.yaml
 .*.swp
 .superpowers/
 .DS_Store
+dist/
+PYPI_RELEASE.md
