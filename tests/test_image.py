@@ -96,6 +96,7 @@ def _mock_get(url, **kwargs):
 class TestImagePostProcessor:
     def test_process_replaces_image_refs(self, monkeypatch):
         monkeypatch.setattr("docpipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
         vision = _FakeVisionClient(results={
             "default": ("architecture-diagram", "展示微服务三层架构"),
         })
@@ -134,6 +135,7 @@ class TestImagePostProcessor:
 
     def test_process_multiple_images(self, monkeypatch):
         monkeypatch.setattr("docpipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
         call_count = [0]
 
         def mock_describe(img, ctx):

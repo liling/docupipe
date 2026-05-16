@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
 import logging
+import re
+import tempfile
 from pathlib import Path
 
 from docpipe.models import Document
@@ -46,4 +49,49 @@ class ConvertStep(PipelineStep):
             if doc.meta.extra.get("_temp_file"):
                 file_path.unlink(missing_ok=True)
 
+        if isinstance(doc.content, str):
+            doc.content = self._extract_inline_images(doc)
+
         return doc
+
+    def _extract_inline_images(self, doc: Document) -> str:
+        """将 markdown 中的 data:image base64 内联图片提取到磁盘，替换为相对路径"""
+        content = doc.content
+        if not isinstance(content, str) or "data:image" not in content:
+            return content
+
+        tmp_dir = tempfile.mkdtemp(prefix="docpipe_images_")
+        images_dir = Path(tmp_dir) / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        doc.meta.extra["_images_dir"] = str(Path(tmp_dir))
+
+        pattern = r'!\[([^\]]*)\]\((data:image/([^;]+);base64,([^)]+))\)'
+        counter = 0
+
+        def replace_inline(match: re.Match) -> str:
+            nonlocal counter
+            alt = match.group(1)
+            mime_type = match.group(3)
+            b64_data = match.group(4)
+
+            ext = _mime_to_ext(mime_type)
+            counter += 1
+            filename = f"image_{counter}{ext}"
+            filepath = images_dir / filename
+
+            try:
+                image_bytes = base64.b64decode(b64_data)
+                filepath.write_bytes(image_bytes)
+            except Exception as e:
+                logger.warning("提取内联图片失败: %s", e)
+                return match.group(0)
+
+            return f"![{alt}](images/{filename})"
+
+        new_content = re.sub(pattern, replace_inline, content)
+        return new_content
+
+
+def _mime_to_ext(mime: str) -> str:
+    mapping = {"png": ".png", "jpeg": ".jpg", "jpg": ".jpg", "gif": ".gif", "webp": ".webp", "x-emf": ".emf"}
+    return mapping.get(mime, f".{mime}")

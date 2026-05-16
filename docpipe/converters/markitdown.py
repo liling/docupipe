@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 class MarkitdownConverter(ConverterBase):
     name = "markitdown"
 
-    def convert(self, file_path: Path) -> str:
+    def convert(self, file_path: Path, **kwargs) -> str:
         from markitdown import MarkItDown
         md = MarkItDown()
-        result = md.convert(str(file_path))
+        result = md.convert(str(file_path), keep_data_uris=True)
         logger.debug("markitdown 转换完成: %s, 长度=%d", file_path.name, len(result.markdown))
         return result.markdown

@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import re
+from pathlib import Path
 
 import requests as req
 
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_IMAGE_TYPES: set[str] = {"png", "jpeg", "jpg", "gif", "webp", "bmp"}
+MIN_IMAGE_DIM = 10
 
 
 class OpenAIVisionClient:
@@ -60,7 +65,6 @@ class OpenAIVisionClient:
             data = json.loads(raw)
             return data["filename"], data["description"]
         except (json.JSONDecodeError, KeyError):
-            # 尝试从文本中提取 JSON
             match = re.search(r'\{[^}]+\}', raw)
             if match:
                 try:
@@ -68,8 +72,62 @@ class OpenAIVisionClient:
                     return data["filename"], data["description"]
                 except (json.JSONDecodeError, KeyError):
                     pass
-            logger.warning(f"Vision API 返回无法解析: {raw[:200]}")
+            logger.warning("Vision API 返回无法解析: %s", raw[:200])
             return "image-unknown", "图片描述解析失败"
+
+
+def validate_image(image_bytes: bytes) -> bytes | None:
+    """验证图片是否可处理：检查格式和尺寸。返回有效图片字节或 None。"""
+    if not image_bytes:
+        return None
+
+    image_bytes = _ensure_supported_format(image_bytes)
+    if image_bytes is None:
+        return None
+
+    if not _check_image_size(image_bytes):
+        return None
+
+    return image_bytes
+
+
+def _ensure_supported_format(image_bytes: bytes) -> bytes | None:
+    """将不支持格式的图片转为 PNG，不可转换则返回 None。"""
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+        fmt = (img.format or "").lower()
+        if fmt in ("png", "jpeg", "jpg", "gif", "bmp", "webp"):
+            return image_bytes
+        # 尝试转换为 PNG
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        logger.debug("图片格式 %s 转为 PNG, %d -> %d bytes", fmt, len(image_bytes), len(buf.getvalue()))
+        return buf.getvalue()
+    except ImportError:
+        # 没有 PIL，只检查简单 magic bytes
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n' or image_bytes[:2] == b'\xff\xd8':
+            return image_bytes
+        return None
+    except Exception as e:
+        logger.debug("无法识别图片格式: %s", e)
+        return None
+
+
+def _check_image_size(image_bytes: bytes) -> bool:
+    """检查图片像素尺寸，宽或高小于 MIN_IMAGE_DIM 则跳过。"""
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes))
+        w, h = img.size
+        if w < MIN_IMAGE_DIM or h < MIN_IMAGE_DIM:
+            logger.debug("图片尺寸过小 (%dx%d)，跳过", w, h)
+            return False
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    return True
 
 
 class ImagePostProcessor:
@@ -77,8 +135,9 @@ class ImagePostProcessor:
         self.vision_client = vision_client
         self.max_image_size = max_image_size
 
-    def process(self, markdown: str, source_context: str) -> tuple[str, dict]:
+    def process(self, markdown: str, source_context: str, images_dir: str | None = None) -> tuple[str, dict]:
         image_metadata: dict[str, dict] = {}
+
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
 
         def replace_image(match: re.Match) -> str:
@@ -87,28 +146,35 @@ class ImagePostProcessor:
             if url.startswith("image://"):
                 return match.group(0)
 
-            # 跳过 data: URI（已内联，无需下载）
-            if url.startswith("data:"):
-                return match.group(0)
-
-            # 跳过相对路径（没有 scheme，无法下载）
-            if "://" not in url:
-                return match.group(0)
-
             try:
-                resp = req.get(url, timeout=30)
-                resp.raise_for_status()
-                image_bytes = resp.content
+                if url.startswith("data:"):
+                    image_bytes = self._decode_data_uri(url)
+                elif "://" in url:
+                    resp = req.get(url, timeout=30)
+                    resp.raise_for_status()
+                    image_bytes = resp.content
+                elif images_dir:
+                    local_path = Path(images_dir) / url
+                    if local_path.is_file():
+                        image_bytes = local_path.read_bytes()
+                    else:
+                        return match.group(0)
+                else:
+                    return match.group(0)
 
-                if len(image_bytes) > self.max_image_size:
-                    logger.warning(f"图片过大 ({len(image_bytes)} bytes)，跳过: {url}")
+                if not image_bytes or len(image_bytes) > self.max_image_size:
+                    return match.group(0)
+
+                image_bytes = validate_image(image_bytes)
+                if image_bytes is None:
+                    logger.debug("图片不满足处理条件，保留原引用: %s", url[:80])
                     return match.group(0)
 
                 filename, description = self.vision_client.describe(image_bytes, source_context)
 
                 full_filename = f"{filename}.png"
                 image_metadata[full_filename] = {
-                    "original_url": url,
+                    "original_url": url[:200],
                     "description": description,
                 }
 
@@ -116,8 +182,16 @@ class ImagePostProcessor:
                 return f"**{new_alt}**：{description}\n\n![{new_alt}](image://{full_filename})"
 
             except Exception as e:
-                logger.warning(f"图片处理失败 {url}: {e}")
+                logger.warning("图片处理失败 %s: %s", url[:80], e)
                 return match.group(0)
 
         new_markdown = re.sub(pattern, replace_image, markdown)
         return new_markdown, image_metadata
+
+    @staticmethod
+    def _decode_data_uri(uri: str) -> bytes:
+        """从 data:image/...;base64,... URI 解码图片字节"""
+        match = re.match(r'data:[^;]+;base64,(.+)', uri)
+        if not match:
+            raise ValueError(f"无法解析 data URI: {uri[:50]}")
+        return base64.b64decode(match.group(1))

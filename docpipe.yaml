@@ -1,17 +1,16 @@
 hindsight:
-  api_url: ${HINDSIGHT_API_URL}
-  api_key: ${HINDSIGHT_API_KEY}
-  bank_id: ${HINDSIGHT_BANK_ID}
+  api_url: http://localhost:8888
+  bank_id: docpipe
 
 image_description:
-  api_key: ${IMAGE_API_KEY}
-  base_url: ${IMAGE_BASE_URL}
+  api_key: ${WISEDU_API_KEY}
+  base_url: http://172.16.4.197:8002/v1
   model: ${IMAGE_MODEL:-qwen3.5-flash}
 
 converters:
   extensions:
     ".pdf": mineru
-    ".docx": mineru
+    ".docx": markitdown
     ".pptx": mineru
     ".xlsx": mineru
     ".doc": mineru
@@ -20,42 +19,38 @@ converters:
 
 pipelines:
 
-  - name: shujuxian-to-hindsight
+  # 阶段 1: 钉钉 → localdrive（只下载不转换）
+  - name: dingtalk-download
     source:
       dingtalk:
         space_id: nb9XJB7qpnkxQXyA
-        folders: ["产品规划物料/解决方案"]
-        include_types: [DOCUMENT, ALIDOC]
-    destination:
-      hindsight:
-        context_prefix: "数据线知识库文档"
-    steps:
-      - convert
-      - image_description
-    options:
-      resume: true
-      sync: true
-
-  - name: shujuxian-to-local
-    source:
-      dingtalk:
-        space_id: nb9XJB7qpnkxQXyA
-        folders: ["产品规划物料/解决方案"]
+        folders: ["产品规划物料"]
         include_types: [DOCUMENT, ALIDOC]
     destination:
       localdrive:
-        output_dir: ./output
+        output_dir: ./output/dingtalk
+    steps: []
+
+  # 阶段 2: localdrive → localdrive（转换为 markdown + 描述图片）
+  - name: dingtalk-convert
+    source:
+      localdrive:
+        input_dir: ./output/dingtalk
+        include: ["*.docx"]
+    destination:
+      localdrive:
+        output_dir: ./output/markdown
     steps:
       - convert
       - image_description
 
-  - name: local-to-hindsight
+  # 阶段 3: localdrive → hindsight（*.md 直接 retain）
+  - name: markdown-to-hindsight
     source:
       localdrive:
-        input_dir: ./output
+        input_dir: ./output/markdown
         include: ["*.md"]
     destination:
       hindsight:
-        context_prefix: "本地文档"
-    steps:
-      - convert
+        context_prefix: "数据线知识库文档"
+    steps: []

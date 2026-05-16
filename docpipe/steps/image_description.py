@@ -23,8 +23,11 @@ class ImageDescriptionStep(PipelineStep):
         if "![" not in doc.content:
             return doc
 
+        images_dir = doc.meta.extra.get("_images_dir")
         source_context = f"{doc.meta.title} - {doc.meta.path}"
-        new_content, image_metadata = self._processor.process(doc.content, source_context)
+        new_content, image_metadata = self._processor.process(
+            doc.content, source_context, images_dir=images_dir,
+        )
 
         doc.content = new_content
         doc.meta.extra["image_metadata"] = image_metadata

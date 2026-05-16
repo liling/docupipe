@@ -193,7 +193,10 @@ class Pipeline:
                     if doc is None:
                         continue
 
-                if not doc.meta.hash:
+                # 如果有 steps 处理过，基于最终内容重新计算 hash
+                if self._steps is not None:
+                    doc.meta.hash = content_hash(doc.content)
+                elif not doc.meta.hash:
                     doc.meta.hash = content_hash(doc.content)
                 doc.meta.extra["_source"] = self.source.name
 
