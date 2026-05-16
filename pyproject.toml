@@ -20,6 +20,12 @@ dev = [
     "pytest>=7.4.0",
     "responses>=0.24.0",
 ]
+mineru = [
+    "mineru>=0.2.0",
+]
+all = [
+    "docpipe[dev,mineru]",
+]
 
 [project.scripts]
 docpipe = "docpipe.cli:main"

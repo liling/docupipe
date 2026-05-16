@@ -34,8 +34,15 @@ cd docpipe
 pip install uv
 uv pip install -e ".[dev]"
 
+# 如需处理 PDF 文件，安装 MinerU 依赖
+uv pip install -e ".[mineru]"
+
+# 或安装所有可选依赖
+uv pip install -e ".[all]"
+
 # 或使用 pip
 pip install -e ".[dev]"
+pip install -e ".[mineru]"  # PDF 支持
 ```
 
 ### 环境变量
