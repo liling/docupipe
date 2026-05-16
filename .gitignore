@@ -10,3 +10,4 @@ docupipe.yaml
 .DS_Store
 dist/
 PYPI_RELEASE.md
+.venv/
