@@ -254,6 +254,34 @@ class TestPipeline:
         assert len(dest.written) == 0
         assert pipeline.state.load() == {}
 
+    def test_run_with_steps(self, tmp_path):
+        """steps 模式下 pipeline 执行 steps"""
+        docs = [_make_doc("1", "A", content="hello")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+
+        from docpipe.steps.base import PipelineStep
+
+        class UpperStep(PipelineStep):
+            name = "upper"
+            def process(self, doc):
+                doc.content = doc.content.upper()
+                return doc
+
+        pipeline = Pipeline(source, dest, tmp_path, steps=[UpperStep()])
+        pipeline.run()
+        assert len(dest.written) == 1
+        assert dest.written[0].content == "HELLO"
+
+    def test_run_with_empty_steps_processes_all(self, tmp_path):
+        """空 steps 列表等价于无处理"""
+        docs = [_make_doc("1", "A")]
+        source = FakeSource(docs)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, steps=[])
+        pipeline.run()
+        assert len(dest.written) == 1
+
 
 class TestPipelineContentTypeStrategy:
     def test_skip_archives(self, tmp_path):
