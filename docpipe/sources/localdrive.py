@@ -50,6 +50,7 @@ class LocalDriveSource(SourceBase):
                 path=rel_str,
                 hash=file_hash,
                 extra={
+                    "contentType": f.suffix.lstrip("."),
                     "extension": f.suffix.lstrip("."),
                     "absolute_path": str(f),
                     "size": f.stat().st_size,
