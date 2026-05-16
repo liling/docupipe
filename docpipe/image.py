@@ -227,10 +227,11 @@ class ImagePostProcessor:
 
         # Phase 2: Describe
         image_bytes_list = [img_bytes for _, _, img_bytes in processable]
+        progress_label = f"image_description [{self.concurrency}并发]" if self.concurrency > 1 else "image_description"
         if self.concurrency > 1:
-            results = asyncio.run(self._run_concurrent(image_bytes_list, source_context, progress_callback, total))
+            results = asyncio.run(self._run_concurrent(image_bytes_list, source_context, progress_callback, total, progress_label))
         else:
-            results = self._run_sync(image_bytes_list, source_context, progress_callback, total)
+            results = self._run_sync(image_bytes_list, source_context, progress_callback, total, progress_label)
 
         # Phase 3: Build replacements and metadata
         replacements: dict[int, str] = {}
@@ -265,7 +266,7 @@ class ImagePostProcessor:
         return "".join(parts), image_metadata
 
     def _run_sync(self, image_bytes_list: list[bytes], source_context: str,
-                  progress_callback=None, total: int = 0) -> list[tuple[str | None, str | None]]:
+                  progress_callback=None, total: int = 0, label: str = "image_description") -> list[tuple[str | None, str | None]]:
         results: list[tuple[str | None, str | None]] = []
         for i, img_bytes in enumerate(image_bytes_list):
             try:
@@ -275,11 +276,12 @@ class ImagePostProcessor:
                 logger.warning("图片描述失败: %s", e)
                 results.append((None, None))
             if progress_callback and total > 0:
-                progress_callback(f"image_description ({i + 1}/{total})")
+                progress_callback(f"{label} ({i + 1}/{total})")
         return results
 
     async def _run_concurrent(self, image_bytes_list: list[bytes], source_context: str,
-                              progress_callback=None, total: int = 0) -> list[tuple[str | None, str | None]]:
+                              progress_callback=None, total: int = 0,
+                              label: str = "image_description") -> list[tuple[str | None, str | None]]:
         sem = asyncio.Semaphore(self.concurrency)
         done_count = 0
 
@@ -293,7 +295,7 @@ class ImagePostProcessor:
                     result = (None, None)
             done_count += 1
             if progress_callback and total > 0:
-                progress_callback(f"image_description ({done_count}/{total})")
+                progress_callback(f"{label} ({done_count}/{total})")
             return result
 
         return await asyncio.gather(*[describe_one(b) for b in image_bytes_list])
