@@ -113,7 +113,7 @@ class ConvertStep(PipelineStep):
                 logger.warning("提取内联图片失败: %s", e)
                 return match.group(0)
 
-            return f"![{alt}](images/{filename})"
+            return f"![{alt}]({img_item.name})"
 
         new_markdown = re.sub(pattern, replace_inline, markdown)
         return new_markdown, images
