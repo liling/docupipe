@@ -106,7 +106,8 @@ class DingtalkSource(SourceBase):
             try:
                 space_info = self._client.get_space_info(self._space_id)
                 self._space_name = space_info.get("name", self._space_id)
-            except Exception:
+            except Exception as e:
+                logger.warning("获取知识库名称失败: %s, 使用 ID 作为名称: %s", e, self._space_id)
                 self._space_name = self._space_id
         logger.info("列出文档: 知识库=%s, 文件夹=%s", self._space_name, self._folders or self._folder_id or "(根目录)")
         if self._folders:
