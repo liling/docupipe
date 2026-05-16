@@ -5,7 +5,7 @@ import io
 import json
 import logging
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 import requests as req
@@ -196,14 +196,19 @@ class ImagePostProcessor:
 
                 filename, description = self.vision_client.describe(image_bytes, source_context)
 
-                full_filename = f"{filename}.png"
+                original_ext = PurePosixPath(url).suffix or ".png"
+                full_filename = f"{filename}{original_ext}"
                 image_metadata[full_filename] = {
                     "original_url": url[:200],
                     "description": description,
                 }
 
-                new_alt = filename.replace("-", " ")
-                return f"**{new_alt}**：{description}\n\n![{new_alt}](image://{full_filename})"
+                if "/" in url:
+                    new_url = f"{url.rsplit('/', 1)[0]}/{full_filename}"
+                else:
+                    new_url = full_filename
+
+                return f"![{description}]({new_url})"
 
             except Exception as e:
                 logger.warning("图片处理失败 %s: %s", url[:80], e)

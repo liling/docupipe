@@ -102,8 +102,7 @@ class TestImagePostProcessor:
         markdown = '![imag.png](https://example.com/test.png)'
         result, metadata = processor.process(markdown, "测试文档")
 
-        assert "**architecture diagram**：展示微服务三层架构" in result
-        assert "image://architecture-diagram.png" in result
+        assert "![展示微服务三层架构](https://example.com/architecture-diagram.png)" in result
         assert "architecture-diagram.png" in metadata
         assert metadata["architecture-diagram.png"]["original_url"] == "https://example.com/test.png"
         assert metadata["architecture-diagram.png"]["description"] == "展示微服务三层架构"
@@ -153,8 +152,8 @@ class TestImagePostProcessor:
         assert len(metadata) == 2
         assert "image-1.png" in metadata
         assert "image-2.png" in metadata
-        assert "image://image-1.png" in result
-        assert "image://image-2.png" in result
+        assert "image-1.png" in result
+        assert "image-2.png" in result
 
     def test_process_no_images(self):
         vision = _FakeVisionClient()
@@ -187,8 +186,7 @@ class TestImagePostProcessor:
         markdown = '![图表](images/chart.png)'
         result, metadata = processor.process(markdown, "测试文档", image_files=image_files)
 
-        assert "**chart**：数据图表" in result
-        assert "image://chart.png" in result
+        assert "![数据图表](images/chart.png)" in result
         assert "chart.png" in metadata
         assert metadata["chart.png"]["original_url"] == "images/chart.png"
         assert metadata["chart.png"]["description"] == "数据图表"
@@ -216,7 +214,7 @@ class TestImagePostProcessor:
         markdown = '![图表](chart.png)'
         result, metadata = processor.process(markdown, "测试文档", image_files=image_files)
 
-        assert "**chart**：数据图表" in result
+        assert "![数据图表](chart.png)" in result
         assert "chart.png" in metadata
 
     def test_process_image_files_missing(self, monkeypatch):

@@ -69,6 +69,7 @@ class Display:
             TimeRemainingColumn(),
             console=self._console,
             transient=False,
+            auto_refresh=False,
         )
         self._progress_task_id = self._progress.add_task(title, total=total)
         self._live = Live(

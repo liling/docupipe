@@ -30,14 +30,13 @@ class ImageDescriptionStep(PipelineStep):
 
         # 从 bundle 获取图片文件，构建 image_files 映射
         # ConvertStep 创建的引用格式为 "images/image_1.png"
-        # 我们需要同时映射 "images/image_1.png" 和 "image_1.png"
+        # FileItem.name 为 "image_1.png"，需要映射两种 key
         image_files: dict[str, FileItem] = {}
         for image_item in bundle.get_by_role("image"):
             image_files[image_item.name] = image_item
-            # 如果文件名包含路径前缀，添加不带前缀的映射作为后备
-            if "/" in image_item.name:
-                short_name = image_item.name.split("/")[-1]
-                image_files[short_name] = image_item
+            # 添加带 images/ 前缀的映射（与 ConvertStep 输出的 URL 格式对应）
+            if "/" not in image_item.name:
+                image_files[f"images/{image_item.name}"] = image_item
 
         source_context = bundle.context.get("source_context", "")
 
@@ -47,6 +46,15 @@ class ImageDescriptionStep(PipelineStep):
 
         # 更新 main 内容
         main_item.content = new_content
+
+        # 根据 AI 生成的文件名重命名 Bundle 中的图片 FileItem
+        for new_filename, meta in image_metadata.items():
+            original_url = meta.get("original_url", "")
+            original_name = original_url.rsplit("/", 1)[-1] if "/" in original_url else original_url
+            for f in bundle.files:
+                if f.role == "image" and f.name == original_name:
+                    f.name = new_filename
+                    break
 
         # 在 bundle.context 中存储 image_metadata
         bundle.context["image_metadata"] = image_metadata
