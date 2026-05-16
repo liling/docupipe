@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
+from pathlib import Path
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -25,14 +27,12 @@ class S3UploadStep(PipelineStep):
         prefix: str = "attachments",
         url_prefix: str = "",
         roles: list[str] | None = None,
-        id_key: str = "id",
         **kwargs,
     ):
         self._bucket = bucket
         self._prefix = prefix
         self._url_prefix = url_prefix.rstrip("/")
         self._roles = roles or ["image"]
-        self._id_key = id_key
         self._client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
@@ -47,18 +47,17 @@ class S3UploadStep(PipelineStep):
         if not main or not isinstance(main.content, str):
             return bundle
 
-        doc_id = bundle.context.get(self._id_key)
-        if not doc_id:
-            logger.warning("s3_upload: context 中未找到 %s，使用 'unknown'", self._id_key)
-            doc_id = "unknown"
-
         attachments = [f for f in bundle.files if f.role in self._roles]
         if not attachments:
             return bundle
 
         uploaded = []
         for att in attachments:
-            key = f"{self._prefix}/{doc_id}/{att.name}"
+            data = att.content
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            att_hash = hashlib.sha256(data).hexdigest()
+            key = f"{self._prefix}/{att_hash}/{Path(att.name).name}"
             url = f"{self._url_prefix}/{key}"
             try:
                 put_args = {

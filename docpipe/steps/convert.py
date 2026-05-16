@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import re
 import tempfile
@@ -66,7 +67,9 @@ class ConvertStep(PipelineStep):
 
             # 提取内联图片并创建 FileItem
             if isinstance(markdown, str):
-                markdown, images = self._extract_inline_images(markdown)
+                title = bundle.context.get("title", "")
+                prefix = hashlib.sha256(title.encode()).hexdigest()[:10]
+                markdown, images = self._extract_inline_images(markdown, prefix)
 
                 # 将图片文件加入 Bundle
                 for img in images:
@@ -81,7 +84,7 @@ class ConvertStep(PipelineStep):
 
         return bundle
 
-    def _extract_inline_images(self, markdown: str) -> tuple[str, list[FileItem]]:
+    def _extract_inline_images(self, markdown: str, prefix: str = "") -> tuple[str, list[FileItem]]:
         """从 markdown 中提取 data:image base64 内联图片，返回(更新后的markdown, FileItem列表)"""
         if "data:image" not in markdown:
             return markdown, []
@@ -103,7 +106,7 @@ class ConvertStep(PipelineStep):
             try:
                 image_bytes = base64.b64decode(b64_data)
                 img_item = FileItem(
-                    name=f"images/{filename}",
+                    name=f"images/{prefix}/{filename}",
                     content=image_bytes,
                     content_type=f"image/{mime_type}",
                     role="image"

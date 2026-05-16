@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 from unittest.mock import MagicMock, patch, call
 
@@ -26,7 +28,6 @@ def _make_step(**overrides):
         "prefix": "attachments",
         "url_prefix": "https://cdn.example.com",
         "roles": ["image"],
-        "id_key": "id",
     }
     defaults.update(overrides)
     return S3UploadStep(**defaults)
@@ -67,19 +68,21 @@ class TestS3UploadStepUpload:
 
         step = _make_step(roles=["image", "attachment"])
         md = "# Title\n\n![photo](images/photo.png)\n"
-        bundle = _make_bundle(md, [("photo.png", b"\x89PNG")])
+        photo_data = b"\x89PNG"
+        photo_hash = hashlib.sha256(photo_data).hexdigest()
+        bundle = _make_bundle(md, [("photo.png", photo_data)])
 
         result = step.process(bundle)
 
         mock_client.put_object.assert_called_once_with(
             Bucket="test-bucket",
-            Key="attachments/doc1/photo.png",
-            Body=b"\x89PNG",
+            Key=f"attachments/{photo_hash}/photo.png",
+            Body=photo_data,
             ContentType="image/png",
         )
         assert len(result.files) == 1
         assert result.files[0].role == "main"
-        assert "https://cdn.example.com/attachments/doc1/photo.png" in result.main.content
+        assert f"https://cdn.example.com/attachments/{photo_hash}/photo.png" in result.main.content
         assert "images/photo.png" not in result.main.content
 
     @patch("docpipe.steps.s3_upload.boto3")
@@ -89,11 +92,13 @@ class TestS3UploadStepUpload:
 
         step = _make_step(roles=["image", "attachment"])
         md = "![photo](photo.png)\n"
-        bundle = _make_bundle(md, [("photo.png", b"\x89PNG")])
+        photo_data = b"\x89PNG"
+        photo_hash = hashlib.sha256(photo_data).hexdigest()
+        bundle = _make_bundle(md, [("photo.png", photo_data)])
 
         result = step.process(bundle)
 
-        assert "https://cdn.example.com/attachments/doc1/photo.png" in result.main.content
+        assert f"https://cdn.example.com/attachments/{photo_hash}/photo.png" in result.main.content
         assert len(result.files) == 1
 
     @patch("docpipe.steps.s3_upload.boto3")
@@ -103,14 +108,17 @@ class TestS3UploadStepUpload:
 
         step = _make_step(roles=["image", "attachment"])
         md = "![a](images/a.png)\n![b](images/b.png)\n"
-        bundle = _make_bundle(md, [("a.png", b"aaa"), ("b.png", b"bbb")])
+        a_data, b_data = b"aaa", b"bbb"
+        a_hash = hashlib.sha256(a_data).hexdigest()
+        b_hash = hashlib.sha256(b_data).hexdigest()
+        bundle = _make_bundle(md, [("a.png", a_data), ("b.png", b_data)])
 
         result = step.process(bundle)
 
         assert mock_client.put_object.call_count == 2
         assert len(result.files) == 1
-        assert "attachments/doc1/a.png" in result.main.content
-        assert "attachments/doc1/b.png" in result.main.content
+        assert f"attachments/{a_hash}/a.png" in result.main.content
+        assert f"attachments/{b_hash}/b.png" in result.main.content
 
     @patch("docpipe.steps.s3_upload.boto3")
     def test_link_reference_replaced(self, mock_boto3):
@@ -119,12 +127,14 @@ class TestS3UploadStepUpload:
 
         step = _make_step(roles=["image", "attachment"])
         md = "[download](images/report.pdf)\n"
-        bundle = _make_bundle(md, [("report.pdf", b"%PDF", "attachment")],
+        pdf_data = b"%PDF"
+        pdf_hash = hashlib.sha256(pdf_data).hexdigest()
+        bundle = _make_bundle(md, [("report.pdf", pdf_data, "attachment")],
                               doc_id="doc2")
 
         result = step.process(bundle)
 
-        assert "https://cdn.example.com/attachments/doc2/report.pdf" in result.main.content
+        assert f"https://cdn.example.com/attachments/{pdf_hash}/report.pdf" in result.main.content
 
     @patch("docpipe.steps.s3_upload.boto3")
     def test_custom_roles(self, mock_boto3):
@@ -133,30 +143,34 @@ class TestS3UploadStepUpload:
 
         step = _make_step(roles=["attachment"])
         md = "[file](data.csv)\n"
+        csv_data = b"a,b"
+        csv_hash = hashlib.sha256(csv_data).hexdigest()
         files = [
             FileItem(name="doc.md", content=md, role="main"),
-            FileItem(name="data.csv", content=b"a,b", role="attachment"),
+            FileItem(name="data.csv", content=csv_data, role="attachment"),
         ]
         bundle = Bundle(files=files, context={"id": "doc1"})
 
         result = step.process(bundle)
 
         assert len(result.files) == 1
-        assert "https://cdn.example.com/attachments/doc1/data.csv" in result.main.content
+        assert f"https://cdn.example.com/attachments/{csv_hash}/data.csv" in result.main.content
 
 
 class TestS3UploadStepFallback:
 
     @patch("docpipe.steps.s3_upload.boto3")
-    def test_missing_doc_id_uses_unknown(self, mock_boto3):
+    def test_missing_doc_id_uses_content_hash(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
 
         step = _make_step(roles=["image", "attachment"])
         md = "![photo](photo.png)\n"
+        photo_data = b"\x89PNG"
+        photo_hash = hashlib.sha256(photo_data).hexdigest()
         files = [
             FileItem(name="doc.md", content=md, role="main"),
-            FileItem(name="photo.png", content=b"\x89PNG", role="image"),
+            FileItem(name="photo.png", content=photo_data, role="image"),
         ]
         bundle = Bundle(files=files, context={})
 
@@ -164,8 +178,8 @@ class TestS3UploadStepFallback:
 
         mock_client.put_object.assert_called_once_with(
             Bucket="test-bucket",
-            Key="attachments/unknown/photo.png",
-            Body=b"\x89PNG",
+            Key=f"attachments/{photo_hash}/photo.png",
+            Body=photo_data,
         )
 
     @patch("docpipe.steps.s3_upload.boto3")

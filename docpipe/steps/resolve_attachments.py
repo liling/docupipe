@@ -22,8 +22,9 @@ def _guess_content_type(path: str) -> str:
 
 def _read_file(path: Path) -> tuple[str | bytes, str]:
     ext = path.suffix.lower()
-    binary_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".emf", ".pdf",
-                   ".zip", ".tar", ".gz", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"}
+    binary_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".emf", ".wmf",
+                   ".x-wmf", ".pdf", ".zip", ".tar", ".gz", ".doc", ".docx", ".ppt", ".pptx",
+                   ".xls", ".xlsx"}
     if ext in binary_exts:
         return path.read_bytes(), "application/octet-stream"
     return path.read_text(encoding="utf-8"), "text/plain"
