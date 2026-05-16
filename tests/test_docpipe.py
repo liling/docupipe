@@ -793,3 +793,29 @@ class TestConvertStep:
         step = ConvertStep(extension_rules={".pdf": "markitdown"})
         result = step.process(doc)
         assert result.content == "hello"
+
+
+class TestImageDescriptionStep:
+    def test_non_text_content_skipped(self):
+        """非文本内容直接跳过"""
+        from docpipe.steps.image_description import ImageDescriptionStep
+        step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
+        doc = Document(
+            meta=DocumentMeta(id="1", title="t", path="t.pdf", hash=""),
+            content=b"binary data",
+            content_type="pdf",
+        )
+        result = step.process(doc)
+        assert result.content == b"binary data"
+
+    def test_no_images_unchanged(self):
+        """无图片的 markdown 不变"""
+        from docpipe.steps.image_description import ImageDescriptionStep
+        step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
+        doc = Document(
+            meta=DocumentMeta(id="1", title="t", path="t.md", hash=""),
+            content="# Hello\n\nNo images here.",
+            content_type="markdown",
+        )
+        result = step.process(doc)
+        assert result.content == "# Hello\n\nNo images here."
