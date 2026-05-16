@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from docpipe.image import OpenAIVisionClient, ImagePostProcessor, validate_image
-from docpipe.models import FileItem
-from docpipe.steps.image_description import ImageDescriptionStep
+from docupipe.image import OpenAIVisionClient, ImagePostProcessor, validate_image
+from docupipe.models import FileItem
+from docupipe.steps.image_description import ImageDescriptionStep
 
 
 class TestOpenAIVisionClient:
@@ -24,7 +24,7 @@ class TestOpenAIVisionClient:
         mock_client.chat.completions.create.return_value = mock_response
 
         monkeypatch.setattr(
-            "docpipe.image.OpenAI",
+            "docupipe.image.OpenAI",
             lambda **kwargs: mock_client,
         )
 
@@ -57,7 +57,7 @@ class TestOpenAIVisionClient:
         mock_client.chat.completions.create.return_value = mock_response
 
         monkeypatch.setattr(
-            "docpipe.image.OpenAI",
+            "docupipe.image.OpenAI",
             lambda **kwargs: mock_client,
         )
 
@@ -86,7 +86,7 @@ class TestOpenAIVisionClient:
         mock_async_client.chat.completions.create = mock_create
 
         monkeypatch.setattr(
-            "docpipe.image.AsyncOpenAI",
+            "docupipe.image.AsyncOpenAI",
             lambda **kwargs: mock_async_client,
         )
 
@@ -130,8 +130,8 @@ def _mock_get(url, **kwargs):
 
 class TestImagePostProcessor:
     def test_process_replaces_image_refs(self, monkeypatch):
-        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
-        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        monkeypatch.setattr("docupipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docupipe.image.validate_image", lambda b: b)
         vision = _FakeVisionClient(results={
             "default": ("architecture-diagram", "展示微服务三层架构"),
         })
@@ -168,8 +168,8 @@ class TestImagePostProcessor:
         assert len(vision.calls) == 0
 
     def test_process_multiple_images(self, monkeypatch):
-        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
-        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        monkeypatch.setattr("docupipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docupipe.image.validate_image", lambda b: b)
         call_count = [0]
 
         def mock_describe(img, ctx):
@@ -206,7 +206,7 @@ class TestImagePostProcessor:
 
     def test_process_with_image_files(self, monkeypatch):
         """测试使用 image_files 参数处理图片"""
-        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        monkeypatch.setattr("docupipe.image.validate_image", lambda b: b)
         vision = _FakeVisionClient(results={
             "default": ("chart", "数据图表"),
         })
@@ -232,7 +232,7 @@ class TestImagePostProcessor:
     def test_process_with_image_files_base64_content(self, monkeypatch):
         """测试 image_files 中内容为 base64 字符串的情况"""
         import base64
-        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        monkeypatch.setattr("docupipe.image.validate_image", lambda b: b)
         vision = _FakeVisionClient(results={
             "default": ("chart", "数据图表"),
         })
@@ -257,8 +257,8 @@ class TestImagePostProcessor:
 
     def test_process_image_files_missing(self, monkeypatch):
         """测试 image_files 中找不到对应文件，应保持原样（降级策略）"""
-        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
-        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        monkeypatch.setattr("docupipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docupipe.image.validate_image", lambda b: b)
         vision = _FakeVisionClient()
         processor = ImagePostProcessor(vision_client=vision)
 
@@ -281,8 +281,8 @@ class TestImagePostProcessor:
         assert len(vision.calls) == 0
 
     def test_process_concurrent_multiple_images(self, monkeypatch):
-        monkeypatch.setattr("docpipe.image.req.get", _mock_get)
-        monkeypatch.setattr("docpipe.image.validate_image", lambda b: b)
+        monkeypatch.setattr("docupipe.image.req.get", _mock_get)
+        monkeypatch.setattr("docupipe.image.validate_image", lambda b: b)
         call_count = [0]
 
         def mock_describe(img, ctx):

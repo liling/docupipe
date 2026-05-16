@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from docpipe.image import ImagePostProcessor, OpenAIVisionClient
-from docpipe.models import Bundle, FileItem
-from docpipe.steps import register_step
-from docpipe.steps.base import PipelineStep
+from docupipe.image import ImagePostProcessor, OpenAIVisionClient
+from docupipe.models import Bundle, FileItem
+from docupipe.steps import register_step
+from docupipe.steps.base import PipelineStep
 
 logger = logging.getLogger(__name__)
 

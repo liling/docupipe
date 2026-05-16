@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from docpipe.sources.dingtalk import DingtalkSource, _WikiClient
+from docupipe.sources.dingtalk import DingtalkSource, _WikiClient
 
 
 class TestSpaceResolution(unittest.TestCase):

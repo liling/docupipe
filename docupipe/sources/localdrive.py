@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from docpipe.models import Bundle, BundleMeta, FileItem
-from docpipe.sources import register_source
-from docpipe.sources.base import SourceBase
+from docupipe.models import Bundle, BundleMeta, FileItem
+from docupipe.sources import register_source
+from docupipe.sources.base import SourceBase
 
 
 _TEXT_EXTENSIONS = frozenset({

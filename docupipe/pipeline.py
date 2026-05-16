@@ -5,10 +5,10 @@ import json
 import logging
 from pathlib import Path
 
-from docpipe.destinations.base import DestinationBase
-from docpipe.display import Display
-from docpipe.models import Bundle, BundleMeta, SkipBundle
-from docpipe.sources.base import SourceBase
+from docupipe.destinations.base import DestinationBase
+from docupipe.display import Display
+from docupipe.models import Bundle, BundleMeta, SkipBundle
+from docupipe.sources.base import SourceBase
 
 logger = logging.getLogger(__name__)
 

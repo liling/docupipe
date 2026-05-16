@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-from docpipe.models import Bundle, FileItem
-from docpipe.steps.resolve_attachments import ResolveAttachmentsStep
+from docupipe.models import Bundle, FileItem
+from docupipe.steps.resolve_attachments import ResolveAttachmentsStep
 
 
 def _make_bundle(md_content: str, base_dir: str = "/tmp") -> Bundle:

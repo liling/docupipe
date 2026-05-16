@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from docpipe.converters import CONVERTERS, get_converter
-from docpipe.converters.markitdown import MarkitdownConverter
-from docpipe.converters.resolver import TypeRuleResolver
+from docupipe.converters import CONVERTERS, get_converter
+from docupipe.converters.markitdown import MarkitdownConverter
+from docupipe.converters.resolver import TypeRuleResolver
 
 
 class TestMarkitdownConverter:

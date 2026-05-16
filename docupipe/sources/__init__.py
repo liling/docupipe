@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from docpipe.sources.base import SourceBase
+    from docupipe.sources.base import SourceBase
 
 SOURCES: dict[str, type[SourceBase]] = {}
 
@@ -23,5 +23,5 @@ def get_source(name: str) -> type[SourceBase]:
 
 
 # 自动注册内置 source
-import docpipe.sources.dingtalk  # noqa: F401, E402
-import docpipe.sources.localdrive  # noqa: F401, E402
+import docupipe.sources.dingtalk  # noqa: F401, E402
+import docupipe.sources.localdrive  # noqa: F401, E402

@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from docpipe.destinations import register_destination
-from docpipe.destinations.base import DestinationBase
-from docpipe.models import Bundle
+from docupipe.destinations import register_destination
+from docupipe.destinations.base import DestinationBase
+from docupipe.models import Bundle
 
 
 @register_destination("localdrive")

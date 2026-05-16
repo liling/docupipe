@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from docpipe.models import Bundle
+from docupipe.models import Bundle
 
 
 class DestinationBase(ABC):

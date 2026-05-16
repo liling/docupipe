@@ -1,8 +1,8 @@
-# docpipe
+# docupipe
 
 通用文档传输 pipeline 工具，支持从多种文档源获取内容，经过可配置的处理步骤，传输到多种目标系统。
 
-## 为什么需要 docpipe？
+## 为什么需要 docupipe？
 
 在智能化时代，文档管理面临着诸多挑战：
 
@@ -11,7 +11,7 @@
 - **智能处理**：为知识图谱、检索系统准备标准化的文档内容
 - **位置搬家**：文档在不同存储系统间的传输
 
-docpipe 为解决这些问题提供了一个通用的、可扩展的框架。
+docupipe 为解决这些问题提供了一个通用的、可扩展的框架。
 
 ## 核心特性
 
@@ -28,7 +28,7 @@ docpipe 为解决这些问题提供了一个通用的、可扩展的框架。
 ```bash
 # 克隆项目
 git clone <repository-url>
-cd docpipe
+cd docupipe
 
 # 安装依赖（推荐使用 uv）
 pip install uv
@@ -51,7 +51,7 @@ pip install -e ".[mineru]"  # PDF 支持
 
 ### 1. 准备配置文件
 
-创建 `docpipe.yaml`：
+创建 `docupipe.yaml`：
 
 ```yaml
 pipelines:
@@ -70,13 +70,13 @@ pipelines:
 
 ```bash
 mkdir -p input output
-echo "你好，docpipe！" > input/hello.md
+echo "你好，docupipe！" > input/hello.md
 ```
 
 ### 3. 运行 pipeline
 
 ```bash
-python -m docpipe run
+python -m docupipe run
 ```
 
 查看输出：
@@ -88,10 +88,10 @@ cat output/hello.md
 ## 命令行参数
 
 ```bash
-python -m docpipe run [OPTIONS]
+python -m docupipe run [OPTIONS]
 
 选项：
-  --config PATH              配置文件路径（默认：docpipe.yaml）
+  --config PATH              配置文件路径（默认：docupipe.yaml）
   --pipeline NAME            指定 pipeline 名称
   --resume                   跳过已处理的文档
   --sync                     仅同步有变化的文档
@@ -100,8 +100,8 @@ python -m docpipe run [OPTIONS]
   --log-level LEVEL          日志级别（DEBUG/INFO/WARNING/ERROR）
 
 # 列出可用组件
-python -m docpipe sources       # 列出所有 Source
-python -m docpipe destinations  # 列出所有 Destination
+python -m docupipe sources       # 列出所有 Source
+python -m docupipe destinations  # 列出所有 Destination
 ```
 
 ## 配置说明
@@ -277,7 +277,7 @@ pipelines:
 
 ## 状态管理
 
-docpipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state.json`），记录：
+docupipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state.json`），记录：
 
 - 已处理的文档 ID
 - 文档哈希值（用于变更检测）
@@ -323,8 +323,8 @@ python -m pytest tests/test_pipeline.py -v
 
 ```python
 # sources/custom.py
-from docpipe.sources.base import BaseSource
-from docpipe.sources import register_source
+from docupipe.sources.base import BaseSource
+from docupipe.sources import register_source
 
 @register_source("custom")
 class CustomSource(BaseSource):

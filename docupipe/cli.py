@@ -33,7 +33,7 @@ def main(ctx, state_dir, log_level):
 
 
 @main.command()
-@click.option("--config", "config_path", default="docpipe.yaml", help="配置文件路径")
+@click.option("--config", "config_path", default="docupipe.yaml", help="配置文件路径")
 @click.option("--pipeline", "pipeline_name", default=None, help="配置文件中的 pipeline 名称")
 @click.option("--resume", is_flag=True, default=False, help="跳过已处理的文档")
 @click.option("--sync", "sync_mode", is_flag=True, default=False, help="仅同步有变化的文档")
@@ -47,12 +47,12 @@ def run(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
 def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
     import yaml
 
-    from docpipe.config import deep_merge, parse_component_config, resolve_env_vars
-    from docpipe.destinations import get_destination
-    from docpipe.display import Display
-    from docpipe.pipeline import Pipeline
-    from docpipe.sources import get_source
-    from docpipe.steps import get_step
+    from docupipe.config import deep_merge, parse_component_config, resolve_env_vars
+    from docupipe.destinations import get_destination
+    from docupipe.display import Display
+    from docupipe.pipeline import Pipeline
+    from docupipe.sources import get_source
+    from docupipe.steps import get_step
 
     raw = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
     config = resolve_env_vars(raw)
@@ -112,7 +112,7 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
 @main.command("sources")
 def list_sources():
     """列出可用的 Source"""
-    from docpipe.sources import SOURCES
+    from docupipe.sources import SOURCES
     for name, cls in SOURCES.items():
         click.echo(f"  {name}")
 
@@ -120,6 +120,6 @@ def list_sources():
 @main.command("destinations")
 def list_destinations():
     """列出可用的 Destination"""
-    from docpipe.destinations import DESTINATIONS
+    from docupipe.destinations import DESTINATIONS
     for name, cls in DESTINATIONS.items():
         click.echo(f"  {name}")

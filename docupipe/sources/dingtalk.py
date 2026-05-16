@@ -8,14 +8,14 @@ from pathlib import Path
 
 import requests
 
-from docpipe.models import Bundle, BundleMeta, FileItem, SkipBundle
+from docupipe.models import Bundle, BundleMeta, FileItem, SkipBundle
 
 logger = logging.getLogger(__name__)
 
 _ALIDOC_UNSUPPORTED = frozenset({"axls", "amindmap", "aform", "abitable", "able"})
 
-from docpipe.sources import register_source
-from docpipe.sources.base import SourceBase
+from docupipe.sources import register_source
+from docupipe.sources.base import SourceBase
 
 
 class _WikiClient:

@@ -4,9 +4,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from docpipe.destinations import register_destination
-from docpipe.destinations.base import DestinationBase
-from docpipe.models import Bundle
+from docupipe.destinations import register_destination
+from docupipe.destinations.base import DestinationBase
+from docupipe.models import Bundle
 
 
 @register_destination("hindsight")

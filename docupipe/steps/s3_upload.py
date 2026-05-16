@@ -8,9 +8,9 @@ from pathlib import Path
 import boto3
 from botocore.config import Config as BotoConfig
 
-from docpipe.models import Bundle
-from docpipe.steps import register_step
-from docpipe.steps.base import PipelineStep
+from docupipe.models import Bundle
+from docupipe.steps import register_step
+from docupipe.steps.base import PipelineStep
 
 logger = logging.getLogger(__name__)
 

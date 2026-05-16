@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from docpipe.converters import register_converter
-from docpipe.converters.base import ConverterBase
+from docupipe.converters import register_converter
+from docupipe.converters.base import ConverterBase
 
 logger = logging.getLogger(__name__)
 

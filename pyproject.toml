@@ -1,5 +1,5 @@
 [project]
-name = "docpipe"
+name = "docupipe"
 version = "0.1.0"
 description = "通用文档传输 pipeline，支持从多种文档源获取内容，经过可配置的处理步骤，传输到多种目标系统"
 readme = "README.md"
@@ -40,18 +40,18 @@ mineru = [
     "mineru>=3.1.14",
 ]
 all = [
-    "docpipe[dev,mineru]",
+    "docupipe[dev,mineru]",
 ]
 
 [project.scripts]
-docpipe = "docpipe.cli:main"
+docupipe = "docupipe.cli:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["docpipe*"]
+include = ["docupipe*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

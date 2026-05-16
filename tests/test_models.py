@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from docpipe.models import FileItem, Bundle, BundleMeta, SkipBundle
+from docupipe.models import FileItem, Bundle, BundleMeta, SkipBundle
 
 
 class TestFileItem:

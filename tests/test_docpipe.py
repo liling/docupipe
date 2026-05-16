@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from docpipe.models import Bundle, BundleMeta, FileItem, SkipBundle
-from docpipe.pipeline import Pipeline, StateManager, content_hash, bundle_hash
-from docpipe.sources.base import SourceBase
-from docpipe.destinations.base import DestinationBase
+from docupipe.models import Bundle, BundleMeta, FileItem, SkipBundle
+from docupipe.pipeline import Pipeline, StateManager, content_hash, bundle_hash
+from docupipe.sources.base import SourceBase
+from docupipe.destinations.base import DestinationBase
 
 
 class FakeSource(SourceBase):
@@ -259,7 +259,7 @@ class TestPipeline:
         source = FakeSource(bundles)
         dest = FakeDestination()
 
-        from docpipe.steps.base import PipelineStep
+        from docupipe.steps.base import PipelineStep
 
         class UpperStep(PipelineStep):
             name = "upper"
@@ -284,36 +284,36 @@ class TestPipeline:
 
 class TestRegistration:
     def test_sources_registered(self):
-        from docpipe.sources import SOURCES
+        from docupipe.sources import SOURCES
         assert "dingtalk" in SOURCES
         assert "localdrive" in SOURCES
 
     def test_destinations_registered(self):
-        from docpipe.destinations import DESTINATIONS
+        from docupipe.destinations import DESTINATIONS
         assert "hindsight" in DESTINATIONS
 
     def test_localdrive_registered(self):
-        from docpipe.destinations import DESTINATIONS
+        from docupipe.destinations import DESTINATIONS
         assert "localdrive" in DESTINATIONS
 
     def test_get_source_unknown_raises(self):
-        from docpipe.sources import get_source
+        from docupipe.sources import get_source
         with pytest.raises(ValueError, match="未知的 source"):
             get_source("nonexistent")
 
     def test_get_destination_unknown_raises(self):
-        from docpipe.destinations import get_destination
+        from docupipe.destinations import get_destination
         with pytest.raises(ValueError, match="未知的 destination"):
             get_destination("nonexistent")
 
     def test_mineru_converter_registered(self):
-        from docpipe.converters import CONVERTERS
+        from docupipe.converters import CONVERTERS
         assert "mineru" in CONVERTERS
 
 
 class TestLocalDriveDestination:
     def test_write_creates_file_and_sidecar(self, tmp_path):
-        from docpipe.destinations.localdrive import LocalDriveDestination
+        from docupipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
@@ -352,7 +352,7 @@ class TestLocalDriveDestination:
 
     def test_write_with_attachments(self, tmp_path):
         """测试 Bundle 带附件的场景"""
-        from docpipe.destinations.localdrive import LocalDriveDestination
+        from docupipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
@@ -387,7 +387,7 @@ class TestLocalDriveDestination:
         assert result == str(main_file)
 
     def test_write_skips_unchanged(self, tmp_path):
-        from docpipe.destinations.localdrive import LocalDriveDestination
+        from docupipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
@@ -412,7 +412,7 @@ class TestLocalDriveDestination:
         assert mtime1 == mtime2
 
     def test_write_overwrites_changed(self, tmp_path):
-        from docpipe.destinations.localdrive import LocalDriveDestination
+        from docupipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
@@ -432,7 +432,7 @@ class TestLocalDriveDestination:
         assert file_path.read_text(encoding="utf-8") == "new content"
 
     def test_remove_deletes_file_and_sidecar(self, tmp_path):
-        from docpipe.destinations.localdrive import LocalDriveDestination
+        from docupipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
@@ -449,7 +449,7 @@ class TestLocalDriveDestination:
         assert not Path(file_path + ".json").exists()
 
     def test_remove_nonexistent_file_no_error(self, tmp_path):
-        from docpipe.destinations.localdrive import LocalDriveDestination
+        from docupipe.destinations.localdrive import LocalDriveDestination
 
         output_dir = tmp_path / "output"
         dest = LocalDriveDestination(output_dir=str(output_dir))
@@ -464,7 +464,7 @@ class TestLocalDriveSource:
         (tmp_path / "c.docx").write_bytes(b"PK fake docx")
         (tmp_path / "d.txt").write_text("plain text")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         titles = {m.title for m in metas}
@@ -477,7 +477,7 @@ class TestLocalDriveSource:
         (hidden_dir / "secret.md").write_text("hidden dir file")
         (tmp_path / ".hidden.md").write_text("hidden file")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         assert len(metas) == 1
@@ -487,7 +487,7 @@ class TestLocalDriveSource:
         (tmp_path / "README").write_text("no extension")
         (tmp_path / "guide.md").write_text("has extension")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         assert len(metas) == 1
@@ -499,7 +499,7 @@ class TestLocalDriveSource:
         (tmp_path / "root.md").write_text("root")
         (sub / "deep.md").write_text("deep")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         paths = {m.path for m in metas}
@@ -507,14 +507,14 @@ class TestLocalDriveSource:
         assert str(Path("sub") / "dir" / "deep.md") in paths
 
     def test_invalid_dir_raises(self):
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         with pytest.raises(ValueError, match="目录不存在"):
             LocalDriveSource(input_dir="/nonexistent/path")
 
     def test_fetch_text_file(self, tmp_path):
         (tmp_path / "test.md").write_text("hello world", encoding="utf-8")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         bundle = source.fetch(metas[0])
@@ -525,7 +525,7 @@ class TestLocalDriveSource:
     def test_fetch_binary_file(self, tmp_path):
         (tmp_path / "test.pdf").write_bytes(b"%PDF-1.4 fake content")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         bundle = source.fetch(metas[0])
@@ -535,7 +535,7 @@ class TestLocalDriveSource:
     def test_fetch_metadata(self, tmp_path):
         (tmp_path / "report.pdf").write_bytes(b"%PDF fake")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         assert metas[0].title == "report"
@@ -548,7 +548,7 @@ class TestLocalDriveSource:
         (tmp_path / "b.pdf").write_bytes(b"pdf")
         (tmp_path / "c.docx").write_bytes(b"docx")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path), include=["*.md", "*.pdf"])
         metas = source.list()
         titles = {m.title for m in metas}
@@ -559,7 +559,7 @@ class TestLocalDriveSource:
         (tmp_path / "b.pdf").write_bytes(b"pdf")
         (tmp_path / "c.docx").write_bytes(b"docx")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path), exclude=["*.pdf"])
         metas = source.list()
         titles = {m.title for m in metas}
@@ -569,7 +569,7 @@ class TestLocalDriveSource:
         (tmp_path / "a.md").write_text("md")
         (tmp_path / "b.pdf").write_bytes(b"pdf")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(
             input_dir=str(tmp_path),
             include=["*.md", "*.pdf"],
@@ -584,7 +584,7 @@ class TestLocalDriveSource:
         (tmp_path / "b.pdf").write_bytes(b"pdf")
         (tmp_path / "c.py").write_text("print('hi')")
 
-        from docpipe.sources.localdrive import LocalDriveSource
+        from docupipe.sources.localdrive import LocalDriveSource
         source = LocalDriveSource(input_dir=str(tmp_path))
         metas = source.list()
         assert len(metas) == 3
@@ -593,37 +593,37 @@ class TestLocalDriveSource:
 class TestEnvInterpolation:
     def test_resolve_simple(self, monkeypatch):
         monkeypatch.setenv("MY_KEY", "secret123")
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         assert resolve_env_vars("${MY_KEY}") == "secret123"
 
     def test_resolve_with_default(self, monkeypatch):
         monkeypatch.delenv("MISSING_KEY", raising=False)
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         assert resolve_env_vars("${MISSING_KEY:-fallback}") == "fallback"
 
     def test_resolve_existing_overrides_default(self, monkeypatch):
         monkeypatch.setenv("MY_KEY", "actual")
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         assert resolve_env_vars("${MY_KEY:-fallback}") == "actual"
 
     def test_resolve_missing_no_default_keeps_original(self):
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         assert resolve_env_vars("${NONEXISTENT_VAR_XYZ}") == "${NONEXISTENT_VAR_XYZ}"
 
     def test_resolve_nested_dict(self, monkeypatch):
         monkeypatch.setenv("URL", "http://localhost")
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         config = {"api_url": "${URL}", "nested": {"key": "${URL}/path"}}
         result = resolve_env_vars(config)
         assert result == {"api_url": "http://localhost", "nested": {"key": "http://localhost/path"}}
 
     def test_resolve_in_list(self, monkeypatch):
         monkeypatch.setenv("KEY", "val")
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         assert resolve_env_vars(["${KEY}", "plain"]) == ["val", "plain"]
 
     def test_resolve_non_string_unchanged(self):
-        from docpipe.config import resolve_env_vars
+        from docupipe.config import resolve_env_vars
         assert resolve_env_vars(42) == 42
         assert resolve_env_vars(True) is True
         assert resolve_env_vars(None) is None
@@ -631,24 +631,24 @@ class TestEnvInterpolation:
 
 class TestDeepMerge:
     def test_simple_override(self):
-        from docpipe.config import deep_merge
+        from docupipe.config import deep_merge
         assert deep_merge({"a": 1, "b": 2}, {"b": 3}) == {"a": 1, "b": 3}
 
     def test_nested_merge(self):
-        from docpipe.config import deep_merge
+        from docupipe.config import deep_merge
         base = {"api_url": "http://default", "bank_id": "default_bank", "nested": {"a": 1, "b": 2}}
         override = {"bank_id": "my_bank", "nested": {"b": 3, "c": 4}}
         result = deep_merge(base, override)
         assert result == {"api_url": "http://default", "bank_id": "my_bank", "nested": {"a": 1, "b": 3, "c": 4}}
 
     def test_empty_override(self):
-        from docpipe.config import deep_merge
+        from docupipe.config import deep_merge
         assert deep_merge({"a": 1}, {}) == {"a": 1}
 
 
 class TestParseComponentConfig:
     def test_simple_parse(self):
-        from docpipe.config import parse_component_config
+        from docupipe.config import parse_component_config
         type_name, config = parse_component_config(
             {"source": {"localdrive": {"input_dir": "./docs"}}},
             {},
@@ -658,7 +658,7 @@ class TestParseComponentConfig:
         assert config == {"input_dir": "./docs"}
 
     def test_merge_with_global(self):
-        from docpipe.config import parse_component_config
+        from docupipe.config import parse_component_config
         type_name, config = parse_component_config(
             {"destination": {"hindsight": {"bank_id": "my_bank"}}},
             {"hindsight": {"api_url": "http://default", "api_key": "secret"}},
@@ -668,7 +668,7 @@ class TestParseComponentConfig:
         assert config == {"api_url": "http://default", "api_key": "secret", "bank_id": "my_bank"}
 
     def test_missing_component_raises(self):
-        from docpipe.config import parse_component_config
+        from docupipe.config import parse_component_config
         import pytest
         with pytest.raises(ValueError, match="缺少"):
             parse_component_config({}, {}, "source")
@@ -676,18 +676,18 @@ class TestParseComponentConfig:
 
 class TestStepRegistry:
     def test_convert_step_registered(self):
-        from docpipe.steps import STEPS
+        from docupipe.steps import STEPS
         assert "convert" in STEPS
 
     def test_get_step_unknown_raises(self):
-        from docpipe.steps import get_step
+        from docupipe.steps import get_step
         with pytest.raises(ValueError, match="未知的 step"):
             get_step("nonexistent")
 
 
 class TestConvertStep:
     def test_needs_conversion_with_matching_extension(self):
-        from docpipe.steps.convert import ConvertStep
+        from docupipe.steps.convert import ConvertStep
         bundle = Bundle(
             files=[FileItem(name="t.pdf", content=b"", content_type="application/pdf", role="main")],
             context={"id": "1", "title": "t", "path": "t.pdf", "extension": "pdf"},
@@ -696,7 +696,7 @@ class TestConvertStep:
         assert step.needs_conversion(bundle) is True
 
     def test_no_conversion_without_matching_extension(self):
-        from docpipe.steps.convert import ConvertStep
+        from docupipe.steps.convert import ConvertStep
         bundle = Bundle(
             files=[FileItem(name="t.txt", content="hello", content_type="text/plain", role="main")],
             context={"id": "1", "title": "t", "path": "t.txt", "extension": "txt"},
@@ -705,7 +705,7 @@ class TestConvertStep:
         assert step.needs_conversion(bundle) is False
 
     def test_source_rule_skips_conversion(self):
-        from docpipe.steps.convert import ConvertStep
+        from docupipe.steps.convert import ConvertStep
         bundle = Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
             context={"id": "1", "title": "t", "path": "t.md", "extension": "md"},
@@ -714,7 +714,7 @@ class TestConvertStep:
         assert step.needs_conversion(bundle) is False
 
     def test_process_no_rule_returns_unchanged(self):
-        from docpipe.steps.convert import ConvertStep
+        from docupipe.steps.convert import ConvertStep
         bundle = Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
             context={"id": "1", "title": "t", "path": "t.md", "extension": "md"},
@@ -727,7 +727,7 @@ class TestConvertStep:
 class TestImageDescriptionStep:
     def test_non_text_content_skipped(self):
         """非文本内容直接跳过"""
-        from docpipe.steps.image_description import ImageDescriptionStep
+        from docupipe.steps.image_description import ImageDescriptionStep
         step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
         bundle = Bundle(
             files=[FileItem(name="t.pdf", content=b"binary data", content_type="application/pdf", role="main")],
@@ -738,7 +738,7 @@ class TestImageDescriptionStep:
 
     def test_no_images_unchanged(self):
         """无图片的 markdown 不变"""
-        from docpipe.steps.image_description import ImageDescriptionStep
+        from docupipe.steps.image_description import ImageDescriptionStep
         step = ImageDescriptionStep(api_key="k", base_url="http://x", model="m")
         bundle = Bundle(
             files=[FileItem(name="t.md", content="# Hello\n\nNo images here.", content_type="text/markdown", role="main")],
@@ -749,13 +749,13 @@ class TestImageDescriptionStep:
 
     def test_with_image_files_from_bundle(self, monkeypatch):
         """测试从 bundle 中获取图片文件"""
-        from docpipe.steps.image_description import ImageDescriptionStep
-        from docpipe.image import ImagePostProcessor, OpenAIVisionClient
+        from docupipe.steps.image_description import ImageDescriptionStep
+        from docupipe.image import ImagePostProcessor, OpenAIVisionClient
 
         # Mock OpenAIVisionClient
         mock_vision_client = MagicMock()
         mock_vision_client.describe.return_value = ("image-1", "图片描述")
-        monkeypatch.setattr("docpipe.steps.image_description.OpenAIVisionClient", lambda **kw: mock_vision_client)
+        monkeypatch.setattr("docupipe.steps.image_description.OpenAIVisionClient", lambda **kw: mock_vision_client)
 
         # Mock ImagePostProcessor 的 process 方法
         fake_metadata = {"image_1.png": {"description": "图片描述"}}
@@ -784,12 +784,12 @@ class TestImageDescriptionStep:
 
     def test_image_files_without_path_prefix(self, monkeypatch):
         """测试图片文件名没有路径前缀的情况（向后兼容）"""
-        from docpipe.steps.image_description import ImageDescriptionStep
+        from docupipe.steps.image_description import ImageDescriptionStep
 
         # Mock OpenAIVisionClient
         mock_vision_client = MagicMock()
         mock_vision_client.describe.return_value = ("image-1", "描述")
-        monkeypatch.setattr("docpipe.steps.image_description.OpenAIVisionClient", lambda **kw: mock_vision_client)
+        monkeypatch.setattr("docupipe.steps.image_description.OpenAIVisionClient", lambda **kw: mock_vision_client)
 
         # Mock ImagePostProcessor 的 process 方法
         fake_metadata = {"image_1.png": {"description": "描述"}}

@@ -7,9 +7,9 @@ import re
 import tempfile
 from pathlib import Path
 
-from docpipe.models import Bundle, FileItem
-from docpipe.steps import register_step
-from docpipe.steps.base import PipelineStep
+from docupipe.models import Bundle, FileItem
+from docupipe.steps import register_step
+from docupipe.steps.base import PipelineStep
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class ConvertStep(PipelineStep):
         if not converter_name or converter_name == "source":
             return bundle
 
-        from docpipe.converters import get_converter
+        from docupipe.converters import get_converter
         converter_cls = get_converter(converter_name)
         converter = converter_cls()
 

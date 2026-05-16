@@ -5,8 +5,8 @@ import hashlib
 import pytest
 from unittest.mock import MagicMock, patch, call
 
-from docpipe.models import Bundle, FileItem
-from docpipe.steps.s3_upload import S3UploadStep
+from docupipe.models import Bundle, FileItem
+from docupipe.steps.s3_upload import S3UploadStep
 
 
 def _make_bundle(md_content: str, images: list[tuple] | None = None, doc_id: str = "doc1"):
@@ -40,7 +40,7 @@ class TestS3UploadStepNoOp:
         bundle = Bundle(files=[
             FileItem(name="doc.docx", content=b"\x00\x01", role="main"),
         ])
-        with patch("docpipe.steps.s3_upload.boto3") as mock_boto3:
+        with patch("docupipe.steps.s3_upload.boto3") as mock_boto3:
             result = step.process(bundle)
         assert len(result.files) == 1
 
@@ -61,7 +61,7 @@ class TestS3UploadStepNoOp:
 
 class TestS3UploadStepUpload:
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_upload_single_image(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
@@ -85,7 +85,7 @@ class TestS3UploadStepUpload:
         assert f"https://cdn.example.com/attachments/{photo_hash}/photo.png" in result.main.content
         assert "images/photo.png" not in result.main.content
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_upload_image_without_prefix(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
@@ -101,7 +101,7 @@ class TestS3UploadStepUpload:
         assert f"https://cdn.example.com/attachments/{photo_hash}/photo.png" in result.main.content
         assert len(result.files) == 1
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_upload_multiple_images(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
@@ -120,7 +120,7 @@ class TestS3UploadStepUpload:
         assert f"attachments/{a_hash}/a.png" in result.main.content
         assert f"attachments/{b_hash}/b.png" in result.main.content
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_link_reference_replaced(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
@@ -136,7 +136,7 @@ class TestS3UploadStepUpload:
 
         assert f"https://cdn.example.com/attachments/{pdf_hash}/report.pdf" in result.main.content
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_custom_roles(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
@@ -159,7 +159,7 @@ class TestS3UploadStepUpload:
 
 class TestS3UploadStepFallback:
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_missing_doc_id_uses_content_hash(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client
@@ -182,7 +182,7 @@ class TestS3UploadStepFallback:
             Body=photo_data,
         )
 
-    @patch("docpipe.steps.s3_upload.boto3")
+    @patch("docupipe.steps.s3_upload.boto3")
     def test_upload_failure_skips_file(self, mock_boto3):
         mock_client = MagicMock()
         mock_client.put_object.side_effect = Exception("network error")

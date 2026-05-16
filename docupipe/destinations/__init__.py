@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from docpipe.destinations.base import DestinationBase
+    from docupipe.destinations.base import DestinationBase
 
 DESTINATIONS: dict[str, type[DestinationBase]] = {}
 
@@ -23,5 +23,5 @@ def get_destination(name: str) -> type[DestinationBase]:
 
 
 # 自动注册内置 destination
-import docpipe.destinations.hindsight  # noqa: F401, E402
-import docpipe.destinations.localdrive  # noqa: F401, E402
+import docupipe.destinations.hindsight  # noqa: F401, E402
+import docupipe.destinations.localdrive  # noqa: F401, E402

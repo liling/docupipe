@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-`docpipe` 是一个通用文档传输 pipeline 工具，支持从多种文档源获取内容，经过可配置的处理步骤，传输到多种目标系统。采用插件式架构。
+`docupipe` 是一个通用文档传输 pipeline 工具，支持从多种文档源获取内容，经过可配置的处理步骤，传输到多种目标系统。采用插件式架构。
 
 ## 开发命令
 
@@ -18,9 +18,9 @@ python -m pytest tests/ -v
 python -m pytest tests/test_pipeline.py -v
 
 # 运行 CLI（必须通过 YAML 配置文件启动）
-python -m docpipe run                         # 默认读取 docpipe.yaml
-python -m docpipe run --config other.yaml     # 指定配置文件
-python -m docpipe run --pipeline wiki-to-hs   # 指定 pipeline 名称
+python -m docupipe run                         # 默认读取 docupipe.yaml
+python -m docupipe run --config other.yaml     # 指定配置文件
+python -m docupipe run --pipeline wiki-to-hs   # 指定 pipeline 名称
 ```
 
 ## 架构
@@ -49,7 +49,7 @@ source.list_documents() → [DocumentMeta]
 
 ## 配置系统
 
-仅支持 YAML 配置文件方式启动（`--config` 默认值 `docpipe.yaml`）。
+仅支持 YAML 配置文件方式启动（`--config` 默认值 `docupipe.yaml`）。
 
 配置结构：全局默认值 + `pipelines` 列表。每个 pipeline 定义 `source`、`destination`、`steps`。
 支持环境变量插值：`${VAR}` 和 `${VAR:-default}`。

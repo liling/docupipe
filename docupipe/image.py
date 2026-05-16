@@ -14,7 +14,7 @@ import requests as req
 from openai import AsyncOpenAI, OpenAI
 
 if TYPE_CHECKING:
-    from docpipe.models import FileItem
+    from docupipe.models import FileItem
 
 logger = logging.getLogger(__name__)
 

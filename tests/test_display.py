@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from docpipe.display import Display
+from docupipe.display import Display
 
 
 class TestDisplayNonTTY:
