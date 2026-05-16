@@ -45,9 +45,102 @@ pip install -e ".[dev]"
 pip install -e ".[mineru]"  # PDF 支持
 ```
 
+## 快速开始
+
+以下示例使用本地文件作为数据源和目标，无需任何外部依赖。
+
+### 1. 准备配置文件
+
+创建 `docpipe.yaml`：
+
+```yaml
+pipelines:
+  - name: quick-start
+    source:
+      localdrive:
+        input_dir: ./input
+        include: ["*.md"]
+    destination:
+      localdrive:
+        output_dir: ./output
+    steps: []
+```
+
+### 2. 准备测试文件
+
+```bash
+mkdir -p input output
+echo "你好，docpipe！" > input/hello.md
+```
+
+### 3. 运行 pipeline
+
+```bash
+python -m docpipe run
+```
+
+查看输出：
+
+```bash
+cat output/hello.md
+```
+
+## 命令行参数
+
+```bash
+python -m docpipe run [OPTIONS]
+
+选项：
+  --config PATH              配置文件路径（默认：docpipe.yaml）
+  --pipeline NAME            指定 pipeline 名称
+  --resume                   跳过已处理的文档
+  --sync                     仅同步有变化的文档
+  --dry-run                  只打印不执行
+  --state-dir PATH           状态文件目录（默认：./.state）
+  --log-level LEVEL          日志级别（DEBUG/INFO/WARNING/ERROR）
+
+# 列出可用组件
+python -m docpipe sources       # 列出所有 Source
+python -m docpipe destinations  # 列出所有 Destination
+```
+
+## 配置说明
+
+### 全局配置
+
+```yaml
+# HindSight Memory 配置
+hindsight:
+  api_url: ${HINDSIGHT_API_URL}
+  api_key: ${HINDSIGHT_API_KEY}
+  bank_id: ${HINDSIGHT_BANK_ID}
+
+# 图片描述配置
+image_description:
+  api_key: ${IMAGE_DESCRIPTION_API_KEY}
+  base_url: ${IMAGE_DESCRIPTION_BASE_URL}
+  model: ${IMAGE_DESCRIPTION_MODEL:-gpt-4o}
+
+# 文件类型转换规则
+converters:
+  extensions:
+    ".pdf": mineru
+    ".docx": markitdown
+    ".pptx": markitdown
+```
+
+### Pipeline 配置
+
+每个 pipeline 包含：
+
+- `source`：数据源配置
+- `destination`：目标配置
+- `steps`：处理步骤列表
+- `options`：可选配置（resume、sync 等）
+
 ### 环境变量
 
-创建 `.env` 文件：
+创建 `.env` 文件（仅在使用 HindSight Memory 或图片描述时需要）：
 
 ```bash
 # HindSight Memory 配置
@@ -61,32 +154,39 @@ IMAGE_DESCRIPTION_BASE_URL=http://localhost:8002/v1
 IMAGE_DESCRIPTION_MODEL=gpt-4o
 ```
 
-## 快速开始
+### 环境变量插值
 
-### 1. 创建配置文件
+支持 `${VAR}` 和 `${VAR:-default}` 语法：
 
-复制示例配置并根据需要修改：
-
-```bash
-cp docpipe.example.yaml docpipe.yaml
-```
-
-### 2. 运行 pipeline
-
-```bash
-# 运行默认配置文件
-python -m docpipe run
-
-# 指定配置文件
-python -m docpipe run --config custom.yaml
-
-# 运行特定 pipeline
-python -m docpipe run --pipeline dingtalk-download
+```yaml
+api_key: ${API_KEY}                          # 必须设置
+model: ${MODEL:-gpt-4o}                      # 默认值
+base_url: ${BASE_URL:-http://localhost:8080} # 默认值
 ```
 
 ## 使用场景
 
 ### 场景 1：从钉钉知识库下载文档到本地
+
+使用钉钉知识库前，需安装 `dws`（钉钉官方 CLI）并完成认证：
+
+```bash
+# 安装 dws（macOS / Linux）
+curl -fsSL https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.sh | sh
+
+# 或通过 npm 安装
+npm install -g dingtalk-workspace-cli
+
+# 认证（浏览器扫码）
+dws auth login
+
+# 无头环境使用设备流
+dws auth login --device
+```
+
+> 如果组织未开启 CLI 访问权限，扫码后可按提示向管理员申请。管理员在钉钉开放平台 → "CLI 访问管理" 中开启即可。
+
+配置 pipeline：
 
 ```yaml
 pipelines:
@@ -153,50 +253,6 @@ pipelines:
       - image_description
 ```
 
-## 配置说明
-
-### 全局配置
-
-```yaml
-# HindSight Memory 配置
-hindsight:
-  api_url: ${HINDSIGHT_API_URL}
-  api_key: ${HINDSIGHT_API_KEY}
-  bank_id: ${HINDSIGHT_BANK_ID}
-
-# 图片描述配置
-image_description:
-  api_key: ${IMAGE_DESCRIPTION_API_KEY}
-  base_url: ${IMAGE_DESCRIPTION_BASE_URL}
-  model: ${IMAGE_DESCRIPTION_MODEL:-gpt-4o}
-
-# 文件类型转换规则
-converters:
-  extensions:
-    ".pdf": mineru
-    ".docx": markitdown
-    ".pptx": markitdown
-```
-
-### Pipeline 配置
-
-每个 pipeline 包含：
-
-- `source`：数据源配置
-- `destination`：目标配置
-- `steps`：处理步骤列表
-- `options`：可选配置（resume、sync 等）
-
-### 环境变量插值
-
-支持 `${VAR}` 和 `${VAR:-default}` 语法：
-
-```yaml
-api_key: ${API_KEY}                          # 必须设置
-model: ${MODEL:-gpt-4o}                      # 默认值
-base_url: ${BASE_URL:-http://localhost:8080} # 默认值
-```
-
 ## 可用组件
 
 ### Source（数据源）
@@ -219,26 +275,6 @@ base_url: ${BASE_URL:-http://localhost:8080} # 默认值
 - `markitdown`：支持常见办公文档
 - `mineru`：高质量 PDF 转换
 
-## 命令行参数
-
-```bash
-# 运行 pipeline
-python -m docpipe run [OPTIONS]
-
-选项：
-  --config PATH              配置文件路径（默认：docpipe.yaml）
-  --pipeline NAME            指定 pipeline 名称
-  --resume                   跳过已处理的文档
-  --sync                     仅同步有变化的文档
-  --dry-run                  只打印不执行
-  --state-dir PATH           状态文件目录（默认：./.state）
-  --log-level LEVEL          日志级别（DEBUG/INFO/WARNING/ERROR）
-
-# 列出可用组件
-python -m docpipe sources       # 列出所有 Source
-python -m docpipe destinations  # 列出所有 Destination
-```
-
 ## 状态管理
 
 docpipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state.json`），记录：
@@ -251,6 +287,17 @@ docpipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state.
 - **默认模式**：处理所有文档
 - **--resume**：跳过已处理的文档
 - **--sync**：仅同步有变化的文档，删除源中已移除的文档
+
+## 架构
+
+```
+source.list_documents() → [DocumentMeta]
+  → 过滤（resume 跳过已处理 / sync 仅同步变更）
+    → source.fetch(meta) → Document
+      → steps 依次处理（convert → image_description → ...）
+        → dest.write(doc)
+          → state.mark_done()
+```
 
 ## 开发
 
@@ -288,17 +335,6 @@ class CustomSource(BaseSource):
     def fetch(self, meta):
         # 实现文档获取逻辑
         pass
-```
-
-## 架构
-
-```
-source.list_documents() → [DocumentMeta]
-  → 过滤（resume 跳过已处理 / sync 仅同步变更）
-    → source.fetch(meta) → Document
-      → steps 依次处理（convert → image_description → ...）
-        → dest.write(doc)
-          → state.mark_done()
 ```
 
 ## 依赖

@@ -1,3 +1,4 @@
+# 全局默认配置（pipeline 级配置会覆盖全局级）
 hindsight:
   api_url: ${HINDSIGHT_API_URL}
   api_key: ${HINDSIGHT_API_KEY}
@@ -13,30 +14,65 @@ converters:
     ".pdf": mineru
     ".docx": markitdown
     ".pptx": markitdown
-    ".xlsx": markitdown
 
 pipelines:
 
-  - name: dingtalk-to-local
+  # 快速开始：本地文件直接拷贝，无需外部依赖
+  - name: quick-start
+    source:
+      localdrive:
+        input_dir: ./input
+        include: ["*.md"]
+    destination:
+      localdrive:
+        output_dir: ./output
+    steps: []
+
+  # 场景 1：从钉钉知识库下载文档到本地
+  - name: dingtalk-download
     source:
       dingtalk:
-        # 支持使用知识库名称（程序自动查询 ID）
-        space: "平台产品知识库"
-        # 或者直接使用 space_id
-        # space_id: "nb9XJB7qpnkxQXyA"
-        folders: ["文件夹名称"]
+        space: "产品知识库"          # 支持知识库名称（自动查询 ID）
+        # space_id: "kfiwoue83nkxQXyA"  # 或直接使用 space_id
+        folders: ["产品规划物料"]
         include_types: [DOCUMENT, ALIDOC]
     destination:
       localdrive:
         output_dir: ./output/dingtalk
     steps: []
 
-  - name: local-to-hindsight
+  # 场景 2：本地文档格式转换
+  - name: convert-docs
     source:
       localdrive:
         input_dir: ./output/dingtalk
+        include: ["*.docx"]
+    destination:
+      localdrive:
+        output_dir: ./output/markdown
+    steps:
+      - convert
+      - image_description
+
+  # 场景 3：本地文档写入 HindSight Memory
+  - name: to-hindsight
+    source:
+      localdrive:
+        input_dir: ./output/markdown
         include: ["*.md"]
     destination:
       hindsight:
-        context_prefix: "文档"
+        context_prefix: "产品知识库"
     steps: []
+
+  # 场景 4：钉钉知识库 → HindSight Memory（ALL IN ONE）
+  - name: full-pipeline
+    source:
+      dingtalk:
+        space: "产品知识库"
+    destination:
+      hindsight:
+        context_prefix: "知识库"
+    steps:
+      - convert
+      - image_description
