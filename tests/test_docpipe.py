@@ -365,6 +365,10 @@ class TestRegistration:
         with pytest.raises(ValueError, match="未知的 destination"):
             get_destination("nonexistent")
 
+    def test_mineru_converter_registered(self):
+        from docpipe.converters import CONVERTERS
+        assert "mineru" in CONVERTERS
+
 
 class TestLocalDriveDestination:
     def test_write_creates_file_and_sidecar(self, tmp_path):

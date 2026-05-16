@@ -17,3 +17,4 @@ def get_converter(name: str):
 
 
 from docpipe.converters import markitdown  # noqa: E402,F401
+from docpipe.converters import mineru  # noqa: E402,F401
