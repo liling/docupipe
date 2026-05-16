@@ -102,20 +102,19 @@ def _run_single(ctx, source_name, dest_name, resume, sync_mode, dry_run, **kwarg
 def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
     import yaml
 
-    from docpipe.converters.resolver import TypeRuleResolver
+    from docpipe.config import deep_merge, parse_component_config, resolve_env_vars
     from docpipe.destinations import get_destination
     from docpipe.display import Display
-    from docpipe.pipeline import ContentTypeStrategy, Pipeline
+    from docpipe.pipeline import Pipeline
     from docpipe.sources import get_source
+    from docpipe.steps import get_step
 
-    config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+    raw = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+    config = resolve_env_vars(raw)
 
-    # 兼容旧配置：converters 优先，fallback 到 type_rules
-    converters = config.get("converters", config.get("type_rules", {}))
-    resolver = TypeRuleResolver(
-        extension_rules=converters.get("extensions", {}),
-        mime_rules=converters.get("mime_types", {}),
-    )
+    global_config = {k: v for k, v in config.items() if k != "pipelines"}
+    converters_config = global_config.pop("converters", global_config.pop("type_rules", {}))
+    extension_rules = converters_config.get("extensions", {})
 
     pipelines = config.get("pipelines", [])
 
@@ -126,27 +125,35 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
             raise SystemExit(1)
 
     for pipe_config in pipelines:
-        # content_type_rules: pipeline 级别优先，fallback 到全局
-        ct_rules = pipe_config.get("content_type_rules", config.get("content_type_rules"))
-        strategy = ContentTypeStrategy(ct_rules) if ct_rules else None
+        source_name, source_kwargs = parse_component_config(pipe_config, global_config, "source")
+        source = get_source(source_name)(**source_kwargs)
 
-        source_name = pipe_config["source"]
-        dest_name = pipe_config["destination"]
+        dest_name, dest_kwargs = parse_component_config(pipe_config, global_config, "destination")
+        dest = get_destination(dest_name)(**dest_kwargs)
+
+        steps = []
+        for step_spec in pipe_config.get("steps", []):
+            if isinstance(step_spec, str):
+                step_name = step_spec
+                step_kwargs = {}
+            else:
+                items = list(step_spec.items())
+                step_name, step_kwargs = items[0] if items else ("", {})
+
+            global_step_config = global_config.get(step_name, {})
+            if global_step_config:
+                step_kwargs = deep_merge(global_step_config, step_kwargs)
+
+            if step_name == "convert":
+                step_kwargs["extension_rules"] = extension_rules
+
+            step_cls = get_step(step_name)
+            steps.append(step_cls(**step_kwargs))
+
         options = pipe_config.get("options", {})
-        source_config = pipe_config.get("source_config", {})
-        dest_config = pipe_config.get("dest_config", {})
-
-        source_cls = get_source(source_name)
-        dest_cls = get_destination(dest_name)
-
-        source = source_cls(**source_config)
-        dest = dest_cls(**dest_config)
-
         try:
             pipeline = Pipeline(source, dest, ctx.obj["state_dir"],
-                                display=Display(),
-                                type_resolver=resolver,
-                                content_type_strategy=strategy)
+                                display=Display(), steps=steps)
             pipeline.run(
                 resume=resume or options.get("resume", False),
                 sync=sync_mode or options.get("sync", False),
@@ -164,11 +171,6 @@ def _extract_source_config(source_name, kwargs):
             config["space_id"] = kwargs["space"]
         if kwargs.get("folder"):
             config["folder_id"] = kwargs["folder"]
-        if kwargs.get("image_description"):
-            config["image_description"] = True
-            config["image_description_api_key"] = kwargs.get("image_description_api_key", "")
-            config["image_description_base_url"] = kwargs.get("image_description_base_url", "")
-            config["image_description_model"] = kwargs.get("image_description_model", "gpt-4o")
     elif source_name in ("local", "localdrive"):
         if kwargs.get("input_dir"):
             config["input_dir"] = kwargs["input_dir"]

@@ -1,3 +1,13 @@
+hindsight:
+  api_url: ${HINDSIGHT_API_URL}
+  api_key: ${HINDSIGHT_API_KEY}
+  bank_id: ${HINDSIGHT_BANK_ID}
+
+image_description:
+  api_key: ${IMAGE_API_KEY}
+  base_url: ${IMAGE_BASE_URL}
+  model: ${IMAGE_MODEL:-qwen3.5-flash}
+
 converters:
   extensions:
     ".pdf": mineru
@@ -11,61 +21,41 @@ converters:
 pipelines:
 
   - name: shujuxian-to-hindsight
-    source: dingtalk
-    destination: hindsight
-    content_type_rules:
-      DOCUMENT: convert
-      ALIDOC: source
-      ARCHIVE: skip
-      IMAGE: skip
-      OTHER: skip
-    source_config:
-      space_id: "nb9XJB7qpnkxQXyA"
-      folders:
-        - "产品规划物料/解决方案"
-      image_description: true
-      image_description_base_url: "http://172.16.4.197:8002/v1"
-      image_description_api_key: "sk-MTc3MzY0ODE4NDc4NdJiiX-Lt6vvfVMtMVR38-4e6BDBmdTg_ixoQGQQCfwV"
-      image_description_model: "qwen3.5-flash"
-    dest_config:
-      api_url: "http://127.0.0.1:8888"
-      api_key: "hsm_USLTwNV2CzyuOoaSebz2jiZpIrD91tj2lGvkmPWW6Vk"
-      bank_id: "docpipe"
-      context_prefix: "数据线知识库文档"
+    source:
+      dingtalk:
+        space_id: nb9XJB7qpnkxQXyA
+        folders: ["产品规划物料/解决方案"]
+        include_types: [DOCUMENT, ALIDOC]
+    destination:
+      hindsight:
+        context_prefix: "数据线知识库文档"
+    steps:
+      - convert
+      - image_description
     options:
       resume: true
       sync: true
 
   - name: shujuxian-to-local
-    source: dingtalk
-    destination: localdrive
-    content_type_rules:
-      DOCUMENT: convert
-      ALIDOC: source
-      ARCHIVE: skip
-      IMAGE: skip
-      OTHER: skip
-    source_config:
-      space_id: "nb9XJB7qpnkxQXyA"
-      folders:
-        - "产品规划物料/解决方案"
-      image_description: true
-      image_description_base_url: "http://172.16.4.197:8002/v1"
-      image_description_api_key: "sk-MTc3MzY0ODE4NDc4NdJiiX-Lt6vvfVMtMVR38-4e6BDBmdTg_ixoQGQQCfwV"
-      image_description_model: "qwen3.5-flash"
-    dest_config:
-      output_dir: ./output
+    source:
+      dingtalk:
+        space_id: nb9XJB7qpnkxQXyA
+        folders: ["产品规划物料/解决方案"]
+        include_types: [DOCUMENT, ALIDOC]
+    destination:
+      localdrive:
+        output_dir: ./output
+    steps:
+      - convert
+      - image_description
 
   - name: local-to-hindsight
-    source: localdrive
-    destination: hindsight
-    content_type_rules:
-      md: source
-    source_config:
-      input_dir: ./output
-      include: ["*.md"]
-    dest_config:
-      api_url: "http://127.0.0.1:8888"
-      api_key: "hsm_USLTwNV2CzyuOoaSebz2jiZpIrD91tj2lGvkmPWW6Vk"
-      bank_id: "docpipe"
-      context_prefix: "数据线知识库文档"
+    source:
+      localdrive:
+        input_dir: ./output
+        include: ["*.md"]
+    destination:
+      hindsight:
+        context_prefix: "本地文档"
+    steps:
+      - convert

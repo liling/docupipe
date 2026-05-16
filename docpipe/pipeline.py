@@ -7,7 +7,7 @@ from pathlib import Path
 
 from docpipe.destinations.base import DestinationBase
 from docpipe.display import Display
-from docpipe.models import SkipDocument
+from docpipe.models import Document, DocumentMeta, SkipDocument
 from docpipe.sources.base import SourceBase
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,7 @@ class Pipeline:
         dest: DestinationBase,
         state_dir: Path,
         display: Display | None = None,
+        steps: list | None = None,
         type_resolver=None,
         content_type_strategy: ContentTypeStrategy | None = None,
     ):
@@ -96,6 +97,7 @@ class Pipeline:
         self.dest = dest
         self.state = StateManager(state_dir / f"{source.name}_{dest.name}_state.json")
         self._display = display or Display()
+        self._steps = steps
         self._type_resolver = type_resolver
         self._content_type_strategy = content_type_strategy
 
@@ -104,6 +106,53 @@ class Pipeline:
         extension = f".{ext_raw}" if ext_raw else ""
         mime_type = doc_meta.extra.get("contentType", "")
         return self._type_resolver.resolve(extension, mime_type)
+
+    def _process_with_legacy_rules(self, doc: Document, doc_meta: DocumentMeta) -> Document | None:
+        """CLI 参数模式的旧逻辑，返回 None 表示跳过"""
+        converter_name = None
+        if self._content_type_strategy:
+            ct = doc_meta.extra.get("contentType", "")
+            action = self._content_type_strategy.resolve(ct)
+            if action is None or action == "skip":
+                self._display.result("skip", f"{doc_meta.path} [contentType={ct or '未知'}]")
+                return None
+            if action == "convert" and self._type_resolver:
+                converter_name = self._resolve_type(doc_meta)
+                if converter_name == "skip":
+                    self._display.result("skip", f"{doc_meta.path} [无匹配 converter]")
+                    return None
+                if converter_name == "source":
+                    converter_name = None
+            # action == "source", "download", or convert with no resolver: no conversion
+        elif self._type_resolver:
+            converter_name = self._resolve_type(doc_meta)
+            if converter_name is None:
+                self._display.result("skip", f"{doc_meta.path} [无匹配 converter]")
+                return None
+            if converter_name == "skip":
+                self._display.result("skip", f"{doc_meta.path} [无匹配 converter]")
+                return None
+            if converter_name == "source":
+                converter_name = None
+
+        # 仅在 Source 标记需要转换时执行 converter
+        if doc.meta.extra.get("_needs_conversion") and converter_name:
+            return self._run_converter(doc, converter_name)
+        return doc
+
+    def _run_converter(self, doc: Document, converter_name: str) -> Document:
+        """执行 converter 转换"""
+        from docpipe.converters import get_converter
+        converter_cls = get_converter(converter_name)
+        converter = converter_cls()
+        file_path = Path(doc.meta.extra.get("_temp_file", doc.meta.extra.get("absolute_path", "")))
+        try:
+            doc.content = converter.convert(file_path)
+            doc.content_type = "markdown"
+        finally:
+            if doc.meta.extra.get("_temp_file"):
+                file_path.unlink(missing_ok=True)
+        return doc
 
     def run(self, *, resume: bool = False, sync: bool = False, dry_run: bool = False) -> None:
         logger.info("Pipeline 开始: %s → %s (resume=%s, sync=%s, dry_run=%s)",
@@ -122,70 +171,27 @@ class Pipeline:
                 self._display.result("skip", f"{doc_meta.path} (无变化)")
                 continue
 
-            # 类型策略过滤
-            if self._content_type_strategy:
-                # 第一级：ContentTypeStrategy
-                content_type = doc_meta.extra.get("contentType", "")
-                action = self._content_type_strategy.resolve(content_type)
-                if action is None or action == "skip":
-                    ct_label = content_type or "未知类型"
-                    self._display.result("skip", f"{doc_meta.path} [contentType={ct_label}, action={action or 'skip'}]")
-                    continue
-                if action in ("source", "download"):
-                    converter_name = None
-                elif action == "convert":
-                    # 第二级：TypeRuleResolver（仅 convert 动作）
-                    if self._type_resolver:
-                        converter_name = self._resolve_type(doc_meta)
-                        if converter_name == "skip":
-                            ext_info = doc_meta.extra.get("extension", "") or ""
-                            ext_label = f".{ext_info}" if ext_info else "未知扩展名"
-                            self._display.result("skip", f"{doc_meta.path} [contentType={content_type}, converter=skip: {ext_label}]")
-                            continue
-                        if converter_name == "source":
-                            converter_name = None
-                    else:
-                        converter_name = None
-            elif self._type_resolver:
-                # 向后兼容：无 ContentTypeStrategy 时走原有逻辑
-                converter_name = self._resolve_type(doc_meta)
-                ext_info = doc_meta.extra.get("extension", "") or ""
-                type_info = doc_meta.extra.get("contentType", "") or ""
-                type_label = f".{ext_info}" if ext_info else type_info or "未知类型"
-                if converter_name is None:
-                    self._display.result("skip", f"{doc_meta.path} [action=convert, 无匹配 converter: {type_label}]")
-                    continue
-                if converter_name == "skip":
-                    self._display.result("skip", f"{doc_meta.path} [action=convert, converter=skip: {type_label}]")
-                    continue
-                if converter_name == "source":
-                    converter_name = None
-            else:
-                converter_name = None
-
-            # 构建策略标签用于输出
-            _strategy_parts = []
-            if self._content_type_strategy:
-                _strategy_parts.append(f"action={action}")
-            if converter_name:
-                _strategy_parts.append(f"converter={converter_name}")
-            _strategy_label = f" [{', '.join(_strategy_parts)}]" if _strategy_parts else ""
-
-            _display_path = f"{doc_meta.path}{_strategy_label}"
+            _display_path = doc_meta.path
             self._display.set_current(_display_path)
             try:
                 doc = self.source.fetch(doc_meta)
 
-                # 转换：如果 Source 标记需要转换，调用 converter
-                if doc.meta.extra.get("_needs_conversion") and converter_name:
-                    from docpipe.converters import get_converter
-                    converter_cls = get_converter(converter_name)
-                    converter = converter_cls()
-                    file_path = Path(doc.meta.extra["_temp_file"])
-                    try:
-                        doc.content = converter.convert(file_path)
-                    finally:
-                        file_path.unlink(missing_ok=True)
+                if self._steps is not None:
+                    for step in self._steps:
+                        doc = step.process(doc)
+                    # steps 处理完后，如果 _temp_file 还在（没有 convert step 处理），读取文件内容
+                    if not doc.content and doc.meta.extra.get("_temp_file"):
+                        f = Path(doc.meta.extra["_temp_file"])
+                        try:
+                            doc.content = f.read_bytes()
+                            ext = doc.meta.extra.get("extension", "")
+                            doc.content_type = ext
+                        finally:
+                            f.unlink(missing_ok=True)
+                elif self._type_resolver or self._content_type_strategy:
+                    doc = self._process_with_legacy_rules(doc, doc_meta)
+                    if doc is None:
+                        continue
 
                 if not doc.meta.hash:
                     doc.meta.hash = content_hash(doc.content)
@@ -201,11 +207,8 @@ class Pipeline:
                 logger.info("跳过文档: %s - %s", doc_meta.path, e)
                 self._display.result("skip", f"{doc_meta.path} ({e})")
             except Exception as e:
-                ct = doc_meta.extra.get("contentType", "")
-                ext = doc_meta.extra.get("extension", "")
-                detail = f"contentType={ct}" + (f", extension={ext}" if ext else "")
-                logger.error("文档处理失败: %s [%s] - %s", doc_meta.path, detail, e)
-                self._display.result("error", f"{doc_meta.path} [{detail}]: {e}")
+                logger.error("文档处理失败: %s - %s", doc_meta.path, e)
+                self._display.result("error", f"{doc_meta.path}: {e}")
                 self._display.add_failure()
             finally:
                 self._display.clear_current(_display_path)
