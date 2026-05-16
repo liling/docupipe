@@ -26,3 +26,4 @@ def get_step(name: str) -> type[PipelineStep]:
 import docpipe.steps.convert  # noqa: F401, E402
 import docpipe.steps.image_description  # noqa: F401, E402
 import docpipe.steps.s3_upload  # noqa: F401, E402
+import docpipe.steps.resolve_attachments  # noqa: F401, E402
