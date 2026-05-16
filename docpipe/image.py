@@ -6,10 +6,14 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import requests as req
 
 from openai import OpenAI
+
+if TYPE_CHECKING:
+    from docpipe.models import FileItem
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +139,19 @@ class ImagePostProcessor:
         self.vision_client = vision_client
         self.max_image_size = max_image_size
 
-    def process(self, markdown: str, source_context: str, images_dir: str | None = None) -> tuple[str, dict]:
+    def process(self, markdown: str, source_context: str, images_dir: str | None = None,
+                image_files: dict[str, FileItem] | None = None) -> tuple[str, dict]:
+        """处理 markdown 中的图片引用，转换为描述和 image:// 引用。
+
+        Args:
+            markdown: markdown 内容
+            source_context: 来源上下文（用于 AI 描述）
+            images_dir: 图片目录（用于本地图片读取）
+            image_files: 图片文件映射（新 Bundle 模型路径）
+
+        Returns:
+            (处理后的 markdown, 图片元数据)
+        """
         image_metadata: dict[str, dict] = {}
 
         pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
@@ -147,7 +163,15 @@ class ImagePostProcessor:
                 return match.group(0)
 
             try:
-                if url.startswith("data:"):
+                # 新 Bundle 路径：优先从 image_files dict 获取
+                if image_files and url in image_files:
+                    file_item = image_files[url]
+                    if isinstance(file_item.content, bytes):
+                        image_bytes = file_item.content
+                    else:
+                        # 如果是字符串内容，尝试 base64 解码
+                        image_bytes = base64.b64decode(file_item.content)
+                elif url.startswith("data:"):
                     image_bytes = self._decode_data_uri(url)
                 elif "://" in url:
                     resp = req.get(url, timeout=30)
