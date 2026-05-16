@@ -45,6 +45,20 @@ class _DynamicRenderable:
             yield current
 
 
+class _LiveLogStream:
+    """将 logging 输出通过 Live console.print 写到进度条上方。"""
+
+    def __init__(self, print_fn):
+        self._print_fn = print_fn
+
+    def write(self, text):
+        if text and text.strip():
+            self._print_fn(text.rstrip('\n'))
+
+    def flush(self):
+        pass
+
+
 class Display:
     def __init__(self, console: Console | None = None, is_tty: bool | None = None):
         self._console = console or Console()
@@ -54,7 +68,7 @@ class Display:
         self._progress_task_id = None
         self._lock = threading.Lock()
         self._current_tasks: list[str] = []
-        self._saved_log_level: int | None = None
+        self._saved_streams: list[tuple[logging.StreamHandler, object]] = []
 
         self.total: int = 0
         self.completed: int = 0
@@ -94,19 +108,27 @@ class Display:
             transient=False,
         )
         self._live.start()
-        # Live 模式下抑制 INFO 日志，避免和面板输出交叉
-        docpipe_logger = logging.getLogger("docpipe")
-        self._saved_log_level = docpipe_logger.level
-        docpipe_logger.setLevel(logging.WARNING)
+        # 将 root logger 的 StreamHandler 的 stream 替换为通过 Live console 输出
+        self._redirect_logging()
 
     def stop(self) -> None:
         if self._live:
-            # 恢复日志级别
-            if self._saved_log_level is not None:
-                logging.getLogger("docpipe").setLevel(self._saved_log_level)
-                self._saved_log_level = None
+            self._restore_logging()
             self._live.stop()
             self._live = None
+
+    def _redirect_logging(self) -> None:
+        live_stream = _LiveLogStream(self._print)
+        root = logging.getLogger()
+        for handler in root.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                self._saved_streams.append((handler, handler.stream))
+                handler.stream = live_stream
+
+    def _restore_logging(self) -> None:
+        for handler, original_stream in self._saved_streams:
+            handler.stream = original_stream
+        self._saved_streams.clear()
 
     def result(self, status: str, message: str) -> None:
         icons = {"success": "✅", "skip": "⏭️ ", "error": "❌", "info": "ℹ️ "}
