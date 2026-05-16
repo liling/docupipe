@@ -83,4 +83,9 @@ class LocalDriveDestination(DestinationBase):
     @staticmethod
     def _content_type_to_ext(content_type: str) -> str:
         mapping = {"markdown": ".md", "text": ".txt", "html": ".html"}
-        return mapping.get(content_type, "")
+        mapped = mapping.get(content_type)
+        if mapped:
+            return mapped
+        if content_type:
+            return f".{content_type}"
+        return ""

@@ -74,6 +74,14 @@ class LocalDriveSource(SourceBase):
         )
 
     def _matches_filters(self, rel_path: str) -> bool:
+        # 跳过 sidecar .json 文件（与其同名主文件配对的元数据文件）
+        if rel_path.endswith(".json"):
+            main_file = rel_path[:-5]  # 去掉 .json
+            if (self._input_dir / main_file).exists():
+                return False
+        # exclude 优先
+        if self._exclude and self._glob_matches(rel_path, self._exclude):
+            return False
         # exclude 优先
         if self._exclude and self._glob_matches(rel_path, self._exclude):
             return False

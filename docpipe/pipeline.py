@@ -97,7 +97,7 @@ class Pipeline:
         self.dest = dest
         self.state = StateManager(state_dir / f"{source.name}_{dest.name}_state.json")
         self._display = display or Display()
-        self._steps = steps or []
+        self._steps = steps
         self._type_resolver = type_resolver
         self._content_type_strategy = content_type_strategy
 
@@ -176,9 +176,18 @@ class Pipeline:
             try:
                 doc = self.source.fetch(doc_meta)
 
-                if self._steps:
+                if self._steps is not None:
                     for step in self._steps:
                         doc = step.process(doc)
+                    # steps 处理完后，如果 _temp_file 还在（没有 convert step 处理），读取文件内容
+                    if not doc.content and doc.meta.extra.get("_temp_file"):
+                        f = Path(doc.meta.extra["_temp_file"])
+                        try:
+                            doc.content = f.read_bytes()
+                            ext = doc.meta.extra.get("extension", "")
+                            doc.content_type = ext
+                        finally:
+                            f.unlink(missing_ok=True)
                 elif self._type_resolver or self._content_type_strategy:
                     doc = self._process_with_legacy_rules(doc, doc_meta)
                     if doc is None:
