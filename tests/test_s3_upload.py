@@ -126,6 +126,24 @@ class TestS3UploadStepUpload:
 
         assert "https://cdn.example.com/attachments/doc2/report.pdf" in result.main.content
 
+    @patch("docpipe.steps.s3_upload.boto3")
+    def test_custom_roles(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+
+        step = _make_step(roles=["attachment"])
+        md = "[file](data.csv)\n"
+        files = [
+            FileItem(name="doc.md", content=md, role="main"),
+            FileItem(name="data.csv", content=b"a,b", role="attachment"),
+        ]
+        bundle = Bundle(files=files, context={"id": "doc1"})
+
+        result = step.process(bundle)
+
+        assert len(result.files) == 1
+        assert "https://cdn.example.com/attachments/doc1/data.csv" in result.main.content
+
 
 class TestS3UploadStepFallback:
 
