@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import tempfile
 from pathlib import Path
 
 import requests
@@ -290,18 +289,6 @@ class DingtalkSource(SourceBase):
                 result.append(node)
         logger.debug("收集节点完成: 文件夹=%d, 文档=%d", folder_count, doc_count)
         return result
-
-    def _download_to_temp(self, node_id: str, extension: str) -> Path:
-        logger.debug("下载文件: node_id=%s, extension=%s", node_id, extension)
-        download_url = self._client.download_file(node_id)
-        resp = requests.get(download_url, timeout=120)
-        resp.raise_for_status()
-        logger.debug("文件下载成功: node_id=%s, 大小=%d bytes", node_id, len(resp.content))
-
-        suffix = f".{extension}" if extension else ".bin"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(resp.content)
-            return Path(tmp.name)
 
     @staticmethod
     def _clean_html_tags(markdown: str) -> str:
