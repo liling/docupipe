@@ -325,7 +325,7 @@ class TestLocalDriveDestination:
                 "path": "产品规划/方案",
                 "hash": "abc123",
                 "space_name": "知识库A",
-                "contentType": "ALIDOC",
+                "dingtalk_content_type": "ALIDOC",
                 "extension": "adoc",
             },
         )
@@ -520,7 +520,7 @@ class TestLocalDriveSource:
         bundle = source.fetch(metas[0])
         assert isinstance(bundle.main.content, str)
         assert bundle.main.content == "hello world"
-        assert bundle.main.content_type == "markdown"
+        assert bundle.main.content_type == "text/markdown"
 
     def test_fetch_binary_file(self, tmp_path):
         (tmp_path / "test.pdf").write_bytes(b"%PDF-1.4 fake content")
@@ -530,7 +530,7 @@ class TestLocalDriveSource:
         metas = source.list()
         bundle = source.fetch(metas[0])
         assert isinstance(bundle.main.content, bytes)
-        assert bundle.main.content_type == "pdf"
+        assert bundle.main.content_type == "application/pdf"
 
     def test_fetch_metadata(self, tmp_path):
         (tmp_path / "report.pdf").write_bytes(b"%PDF fake")
@@ -1021,7 +1021,7 @@ class TestImageDescriptionStep:
                 FileItem(name="test.md", content="# 标题\n\n![原始引用](images/image_1.png)", content_type="text/markdown", role="main"),
                 FileItem(name="images/image_1.png", content=b"fake-image", content_type="image/png", role="image"),
             ],
-            context={"id": "1", "title": "test", "path": "test.md", "source_context": "测试文档"},
+            context={"id": "1", "title": "测试文档", "path": "test.md"},
         )
 
         result = step.process(bundle)
@@ -1053,7 +1053,7 @@ class TestImageDescriptionStep:
                 FileItem(name="test.md", content="# 标题\n\n![img](image_1.png)", content_type="text/markdown", role="main"),
                 FileItem(name="image_1.png", content=b"fake", content_type="image/png", role="image"),
             ],
-            context={"id": "1", "title": "test", "path": "test.md", "source_context": "测试"},
+            context={"id": "1", "title": "测试", "path": "test.md"},
         )
 
         result = step.process(bundle)

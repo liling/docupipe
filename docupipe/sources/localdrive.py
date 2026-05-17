@@ -6,6 +6,7 @@ from pathlib import Path
 from docupipe.models import Bundle, BundleMeta, FileItem
 from docupipe.sources import register_source
 from docupipe.sources.base import SourceBase
+from docupipe.utils import guess_mime_type
 
 
 _TEXT_EXTENSIONS = frozenset({
@@ -60,7 +61,6 @@ class LocalDriveSource(SourceBase):
                 path=rel_str,
                 hash=file_hash,
                 extra={
-                    "contentType": ext,
                     "extension": ext,
                     "absolute_path": str(f),
                     "size": f.stat().st_size,
@@ -71,13 +71,13 @@ class LocalDriveSource(SourceBase):
     def fetch(self, meta: BundleMeta) -> Bundle:
         abs_path = Path(meta.extra["absolute_path"])
         extension = meta.extra.get("extension", "")
-        content_type = extension
 
         if extension in _TEXT_EXTENSIONS:
             content = abs_path.read_text(encoding="utf-8")
-            content_type = "markdown"
         else:
             content = abs_path.read_bytes()
+
+        content_type = guess_mime_type(extension) if extension else ""
 
         return Bundle(
             files=[FileItem(
