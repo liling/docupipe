@@ -64,6 +64,7 @@ class LocalDriveSource(SourceBase):
                     "extension": ext,
                     "absolute_path": str(f),
                     "size": f.stat().st_size,
+                    "mtime": int(f.stat().st_mtime * 1000),
                 },
             ))
         return result
@@ -88,6 +89,19 @@ class LocalDriveSource(SourceBase):
             )],
             context=dict(meta.extra),
         )
+
+    def supported_change_detection(self) -> list[str]:
+        return ["mtime", "hash"]
+
+    def delete(self, doc_id: str) -> None:
+        """按 doc_id（content hash）查找并删除文件"""
+        metas = self.list()
+        for meta in metas:
+            if meta.id == doc_id:
+                abs_path = meta.extra.get("absolute_path", "")
+                if abs_path and Path(abs_path).exists():
+                    Path(abs_path).unlink()
+                return
 
     def _matches_filters(self, rel_path: str) -> bool:
         if rel_path.endswith(".json"):

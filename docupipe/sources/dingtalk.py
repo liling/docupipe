@@ -133,6 +133,9 @@ class DingtalkSource(SourceBase):
         self._include_types = set(include_types) if include_types else None
         self._client = _WikiClient()
 
+    def supported_change_detection(self) -> list[str]:
+        return ["mtime", "hash"]
+
     def list(self) -> list[BundleMeta]:
         # 如果通过 space_id 传入且没有名称，尝试获取名称
         if not self._space_name:
@@ -182,6 +185,7 @@ class DingtalkSource(SourceBase):
                     "dingtalk_update_time": node.get("updateTime"),
                     "dingtalk_node_type": node_type,
                     "space_name": self._space_name,
+                    "mtime": node.get("updateTime"),
                 },
             ))
         logger.info("列出文档完成: 共 %d 个文档", len(result))

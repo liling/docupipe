@@ -1355,3 +1355,29 @@ class TestPostStepRegistry:
         assert get_post_step("test_post") is _TestPost
         # 清理
         POST_STEPS.pop("test_post", None)
+
+
+class TestSourceChangeDetection:
+    def test_localdrive_supports_mtime_and_hash(self, tmp_path):
+        from docupipe.sources.localdrive import LocalDriveSource
+        (tmp_path / "test.md").write_text("hello")
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        assert sorted(source.supported_change_detection()) == ["hash", "mtime"]
+
+    def test_localdrive_list_provides_mtime(self, tmp_path):
+        from docupipe.sources.localdrive import LocalDriveSource
+        (tmp_path / "test.md").write_text("hello")
+        source = LocalDriveSource(input_dir=str(tmp_path))
+        metas = source.list()
+        assert len(metas) == 1
+        assert metas[0].extra.get("mtime") is not None
+        assert isinstance(metas[0].extra["mtime"], int)
+
+    def test_dingtalk_supports_mtime_and_hash(self):
+        from docupipe.sources.dingtalk import DingtalkSource
+        assert "mtime" in DingtalkSource.supported_change_detection(DingtalkSource)
+        assert "hash" in DingtalkSource.supported_change_detection(DingtalkSource)
+
+    def test_tencent_supports_hash_only(self):
+        from docupipe.sources.tencent import TencentSource
+        assert sorted(TencentSource.supported_change_detection(TencentSource)) == ["hash"]

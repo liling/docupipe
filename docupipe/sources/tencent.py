@@ -161,6 +161,9 @@ class TencentSource(SourceBase):
         self._fetch_mode = fetch_mode
         self._client = _TencentDocClient(token)
 
+    def supported_change_detection(self) -> list[str]:
+        return ["hash"]
+
     def list(self) -> list[BundleMeta]:
         logger.info("列出文档: space_id=%s, folders=%s", self._space_id, self._folders)
 
