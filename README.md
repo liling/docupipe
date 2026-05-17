@@ -377,6 +377,17 @@ class CustomSource(BaseSource):
         pass
 ```
 
+## 文档
+
+详细文档请参见 [docs/](docs/index.md) 目录：
+
+| 类型 | 文档 |
+|------|------|
+| 📖 教程 | [快速入门](docs/tutorial-quick-start.md) — 从钉钉知识库同步到 Hindsight Memory |
+| 📋 操作指南 | [配置 Pipeline](docs/howto-configure.md)、[添加新组件](docs/howto-add-component.md) |
+| 📚 参考 | [配置系统](docs/reference-configuration.md)、[API 参考](docs/reference-api.md)、[组件 API](docs/reference-components.md) |
+| 💡 解释 | [架构设计](docs/explanation-architecture.md)、[运行模式](docs/explanation-modes.md) |
+
 ## 依赖
 
 - Python 3.11+
