@@ -36,6 +36,29 @@ def resolve_env_vars(value: Any, variables: dict[str, str] | None = None) -> Any
     return value
 
 
+_CONTEXT_PATTERN = re.compile(r"\$\{context\.([^}]+)\}")
+
+
+def resolve_context_vars(value: Any, context: dict) -> Any:
+    """递归替换 ${context.field}，用 bundle context 的值填充。"""
+
+    def _replace(match: re.Match) -> str:
+        expr = match.group(1)
+        if ":-" in expr:
+            field, default = expr.split(":-", 1)
+            return str(context.get(field.strip(), default))
+        val = context.get(expr.strip())
+        return str(val) if val is not None else match.group(0)
+
+    if isinstance(value, str):
+        return _CONTEXT_PATTERN.sub(_replace, value)
+    if isinstance(value, dict):
+        return {k: resolve_context_vars(v, context) for k, v in value.items()}
+    if isinstance(value, list):
+        return [resolve_context_vars(v, context) for v in value]
+    return value
+
+
 def execute_variables_script(raw_config: dict) -> dict[str, str]:
     """执行配置中的 variables 脚本，返回变量字典。"""
     vars_block = raw_config.get("variables")
