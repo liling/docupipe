@@ -25,11 +25,10 @@ class StateManager:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return {}
-        # 兼容旧格式：{id: hash} → {id: {"hash": hash, "path": ""}}
         result = {}
         for k, v in raw.items():
             if isinstance(v, str):
-                result[k] = {"hash": v, "path": ""}
+                result[k] = {"hash": v, "path": "", "status": "done"}
             else:
                 result[k] = v
         return result
@@ -42,19 +41,50 @@ class StateManager:
         )
 
     def is_processed(self, doc_id: str) -> bool:
-        return doc_id in self.load()
+        entry = self.load().get(doc_id, {})
+        return entry.get("status") == "done"
 
     def is_unchanged(self, doc_id: str, content_hash: str) -> bool:
         entry = self.load().get(doc_id, {})
         return entry.get("hash") == content_hash
 
-    def mark_done(self, doc_id: str, content_hash: str, path: str = "") -> None:
+    def is_mtime_unchanged(self, doc_id: str, mtime: int) -> bool:
+        entry = self.load().get(doc_id, {})
+        return entry.get("mtime") == mtime
+
+    def mark_pending(self, items: list[tuple[str, str, str, dict]]) -> None:
+        """标记文档为待处理。items: [(doc_id, path, title, fetch_extra), ...]"""
         entries = self.load()
-        entries[doc_id] = {"hash": content_hash, "path": path}
+        for doc_id, path, title, fetch_extra in items:
+            entries[doc_id] = {
+                "status": "pending",
+                "path": path,
+                "title": title,
+                "fetch_extra": fetch_extra,
+            }
+        self.save(entries)
+
+    def mark_done(self, doc_id: str, content_hash: str, path: str = "", mtime: int | None = None) -> None:
+        entries = self.load()
+        entry = {"status": "done", "hash": content_hash, "path": path}
+        if mtime is not None:
+            entry["mtime"] = mtime
+        entries[doc_id] = entry
         self.save(entries)
 
     def get_path(self, doc_id: str) -> str:
         return self.load().get(doc_id, {}).get("path", "")
+
+    def get_mtime(self, doc_id: str) -> int | None:
+        return self.load().get(doc_id, {}).get("mtime")
+
+    def find_pending(self) -> list[tuple[str, str, str, dict]]:
+        """返回 [(doc_id, title, path, fetch_extra), ...] 待处理的条目"""
+        result = []
+        for doc_id, entry in self.load().items():
+            if entry.get("status") == "pending":
+                result.append((doc_id, entry.get("title", ""), entry.get("path", ""), entry.get("fetch_extra", {})))
+        return result
 
     def find_removed(self, current_ids: list[str]) -> list[str]:
         stored = self.load()
