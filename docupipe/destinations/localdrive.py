@@ -10,10 +10,11 @@ from docupipe.models import Bundle
 
 @register_destination("localdrive")
 class LocalDriveDestination(DestinationBase):
-    def __init__(self, output_dir: str, replace_extension: bool = False, save_sidecar: bool = True, **kwargs):
+    def __init__(self, output_dir: str, replace_extension: bool = False, save_sidecar: bool = True, path_template: str | None = None, **kwargs):
         self._output_dir = Path(output_dir)
         self._replace_extension = replace_extension
         self._save_sidecar = save_sidecar
+        self._path_template = path_template
 
     def write(self, bundle: Bundle) -> str:
         """写入Bundle到本地磁盘，包括主文件和所有附件"""
@@ -80,8 +81,7 @@ class LocalDriveDestination(DestinationBase):
     def _resolve_path(self, bundle: Bundle) -> Path:
         """从 Bundle context 解析输出路径"""
         context = bundle.context
-        space_name = context.get("space_name", "")
-        rel_path = context["path"]
+        rel_path = self._path_template or context["path"]
 
         # 追加或替换扩展名
         main_file = bundle.main
@@ -97,8 +97,6 @@ class LocalDriveDestination(DestinationBase):
             else:
                 rel_path = rel_path + ext
 
-        if space_name:
-            return self._output_dir / space_name / rel_path
         return self._output_dir / rel_path
 
     def _write_sidecar(self, file_path: Path, bundle: Bundle) -> None:
@@ -112,7 +110,7 @@ class LocalDriveDestination(DestinationBase):
             "extension": context.get("extension", ""),
             "space_name": space_name,
             "relative_path": context["path"],
-            "full_path": f"{space_name}/{context['path']}" if space_name else context["path"],
+            "full_path": context["path"],
             "content_hash": context.get("hash", ""),
         }
         sidecar = Path(str(file_path) + ".json")

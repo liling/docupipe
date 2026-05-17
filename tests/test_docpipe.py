@@ -332,8 +332,8 @@ class TestLocalDriveDestination:
 
         result = dest.write(bundle)
 
-        # 文件已创建，路径包含 space_name 和原始路径
-        expected_file = output_dir / "知识库A" / "产品规划" / "方案.md"
+        # 文件已创建，路径不再包含 space_name
+        expected_file = output_dir / "产品规划" / "方案.md"
         assert expected_file.exists()
         assert expected_file.read_text(encoding="utf-8") == "# 方案内容"
 
@@ -345,7 +345,7 @@ class TestLocalDriveDestination:
         assert meta_json["title"] == "方案"
         assert meta_json["space_name"] == "知识库A"
         assert meta_json["relative_path"] == "产品规划/方案"
-        assert meta_json["full_path"] == "知识库A/产品规划/方案"
+        assert meta_json["full_path"] == "产品规划/方案"
         assert meta_json["content_hash"] == "abc123"
 
         assert result == str(expected_file)
@@ -374,13 +374,13 @@ class TestLocalDriveDestination:
 
         result = dest.write(bundle)
 
-        # 主文件已创建
-        main_file = output_dir / "知识库A" / "文档.md"
+        # 主文件已创建（不再包含 space_name 路径）
+        main_file = output_dir / "文档.md"
         assert main_file.exists()
         assert main_file.read_text(encoding="utf-8") == "# 文档\n\n![图片](图片.png)"
 
-        # 附件已创建
-        image_file = output_dir / "知识库A" / "图片.png"
+        # 附件已创建（与主文件同目录）
+        image_file = output_dir / "图片.png"
         assert image_file.exists()
         assert image_file.read_bytes() == b"fake-png-data"
 
@@ -396,9 +396,9 @@ class TestLocalDriveDestination:
             context={"id": "1", "title": "A", "path": "A", "hash": "h1", "space_name": "S"},
         )
 
-        # 第一次写入
+        # 第一次写入（不再包含 space_name 路径）
         dest.write(bundle)
-        file_path = output_dir / "S" / "A.md"
+        file_path = output_dir / "A.md"
         mtime1 = file_path.stat().st_mtime
 
         # 修改时间不同则说明被重写了
@@ -428,7 +428,7 @@ class TestLocalDriveDestination:
         )
         dest.write(bundle2)
 
-        file_path = output_dir / "S" / "A.md"
+        file_path = output_dir / "A.md"
         assert file_path.read_text(encoding="utf-8") == "new content"
 
     def test_remove_deletes_file_and_sidecar(self, tmp_path):
@@ -872,6 +872,53 @@ class TestUpdateConfig:
         dest = LocalDriveDestination(output_dir="/old")
         dest.update_config({"nonexistent": "value"})
         assert str(dest._output_dir) == "/old"
+
+
+class TestLocalDrivePathTemplate:
+    def test_default_uses_context_path(self, tmp_path):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir=str(tmp_path))
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "folder/doc", "extension": "md"},
+        )
+        path = dest._resolve_path(bundle)
+        assert path == tmp_path / "folder" / "doc.md"
+
+    def test_path_template_overrides_context_path(self, tmp_path):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir=str(tmp_path), path_template="custom/name")
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "folder/doc", "extension": "md"},
+        )
+        path = dest._resolve_path(bundle)
+        assert path == tmp_path / "custom" / "name.md"
+
+    def test_no_space_name_prefix(self, tmp_path):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir=str(tmp_path))
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "doc", "extension": "md", "space_name": "我的空间"},
+        )
+        path = dest._resolve_path(bundle)
+        assert path == tmp_path / "doc.md"
+        assert "我的空间" not in str(path)
+
+    def test_path_template_with_context_filename_via_update_config(self, tmp_path):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir=str(tmp_path), path_template="${context.filename}")
+        bundle = Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context={"id": "1", "title": "t", "path": "folder/doc", "filename": "doc", "extension": "md"},
+        )
+        # Simulate pipeline's update_config flow
+        from docupipe.config import resolve_context_vars
+        resolved = resolve_context_vars({"path_template": dest._path_template}, bundle.context)
+        dest.update_config(resolved)
+        path = dest._resolve_path(bundle)
+        assert path == tmp_path / "doc.md"
 
 
 class TestStepRegistry:
