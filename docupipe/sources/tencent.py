@@ -192,6 +192,7 @@ class TencentSource(SourceBase):
             files.append(FileItem(
                 name=f"{meta.title}.{ext}",
                 content=resp.content,
+                content_type=ext,
                 role="main" if self._fetch_mode == "export" else "attachment",
             ))
 
