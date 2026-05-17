@@ -47,7 +47,7 @@ def run(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
 def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
     import yaml
 
-    from docupipe.config import deep_merge, parse_component_config, resolve_env_vars
+    from docupipe.config import deep_merge, execute_variables_script, parse_component_config, resolve_env_vars
     from docupipe.destinations import get_destination
     from docupipe.display import Display
     from docupipe.pipeline import Pipeline
@@ -55,9 +55,10 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
     from docupipe.steps import get_step
 
     raw = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
-    config = resolve_env_vars(raw)
+    variables = execute_variables_script(raw)
+    config = resolve_env_vars(raw, variables)
 
-    global_config = {k: v for k, v in config.items() if k != "pipelines"}
+    global_config = {k: v for k, v in config.items() if k not in ("pipelines", "variables")}
     converters_config = global_config.pop("converters", global_config.pop("type_rules", {}))
     extension_rules = converters_config.get("extensions", {})
 
