@@ -39,7 +39,7 @@ class ImageDescriptionStep(PipelineStep):
             if "/" not in image_item.name:
                 image_files[f"images/{image_item.name}"] = image_item
 
-        source_context = bundle.context.get("source_context", "")
+        source_context = bundle.context.get("title", "")
         progress_cb = bundle.context.get("_step_progress")
 
         new_content, image_metadata = self._processor.process(
