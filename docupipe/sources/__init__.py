@@ -25,3 +25,4 @@ def get_source(name: str) -> type[SourceBase]:
 # 自动注册内置 source
 import docupipe.sources.dingtalk  # noqa: F401, E402
 import docupipe.sources.localdrive  # noqa: F401, E402
+import docupipe.sources.tencent  # noqa: F401, E402
