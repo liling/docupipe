@@ -63,25 +63,28 @@ class _TencentDocClient:
         # 发起导出
         result = self._call_tool("manage.export_file", {"file_id": file_id})
         data = self._parse_result(result)
-        ticket_id = data.get("ticket_id", "")
-        file_name = data.get("file_name", "")
+        task_id = data.get("task_id", "")
+        if not task_id:
+            raise RuntimeError(f"export_file 未返回 task_id: {data}")
 
         # 轮询进度
         for _ in range(60):
+            time.sleep(5)
             progress_result = self._call_tool(
                 "manage.export_progress",
-                {"file_id": file_id, "ticket_id": ticket_id},
+                {"task_id": task_id},
             )
             progress = self._parse_result(progress_result)
-            status = progress.get("status", "")
-            if status == "finished":
+            if progress.get("error"):
+                raise RuntimeError(f"导出失败: {progress['error']}")
+            if progress.get("progress") == 100:
                 file_url = progress.get("file_url", "")
-                return file_url, file_name or progress.get("file_name", "")
-            if status == "failed":
-                raise RuntimeError(f"导出失败: {progress.get('error', '')}")
-            time.sleep(5)
+                file_name = progress.get("file_name", "")
+                if not file_url:
+                    raise RuntimeError(f"导出完成但无下载 URL: {progress}")
+                return file_url, file_name
 
-        raise RuntimeError("导出超时：超过最大轮询次数")
+        raise SkipBundle(f"导出轮询超时: file_id={file_id}")
 
 
 @register_source("tencent")
@@ -189,7 +192,7 @@ class TencentSource(SourceBase):
 
         while True:
             data = self._client.list_nodes(space_id, parent_id=parent_id, num=num)
-            nodes = data.get("nodes", [])
+            nodes = data.get("children", [])
             has_next = data.get("has_next", False)
 
             for node in nodes:
@@ -221,7 +224,7 @@ class TencentSource(SourceBase):
         parent_id = self._parent_id
         for segment in segments:
             data = self._client.list_nodes(self._space_id, parent_id=parent_id)
-            nodes = data.get("nodes", [])
+            nodes = data.get("children", [])
             matched = None
             for node in nodes:
                 if node.get("node_type") == "wiki_folder" and node.get("title") == segment:

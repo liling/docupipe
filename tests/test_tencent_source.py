@@ -20,7 +20,7 @@ class TestTencentDocClient(unittest.TestCase):
     @patch("docupipe.sources.tencent._TencentDocClient._call_tool")
     def test_list_nodes(self, mock_call):
         """测试列出节点"""
-        expected = {"nodes": [{"node_id": "n1", "title": "文档1"}], "has_next": False}
+        expected = {"children": [{"node_id": "n1", "title": "文档1"}], "has_next": False}
         mock_call.return_value = _make_call_tool_result(expected)
 
         client = _TencentDocClient(token="fake-token")
@@ -35,7 +35,7 @@ class TestTencentDocClient(unittest.TestCase):
     @patch("docupipe.sources.tencent._TencentDocClient._call_tool")
     def test_list_nodes_with_parent(self, mock_call):
         """测试列出指定父节点下的节点"""
-        expected = {"nodes": [{"node_id": "n2", "title": "子文档"}], "has_next": False}
+        expected = {"children": [{"node_id": "n2", "title": "子文档"}], "has_next": False}
         mock_call.return_value = _make_call_tool_result(expected)
 
         client = _TencentDocClient(token="fake-token")
@@ -75,9 +75,9 @@ class TestTencentDocClient(unittest.TestCase):
         # 第一次调用：发起导出
         # 后续调用：轮询进度
         mock_call.side_effect = [
-            _make_call_tool_result({"ticket_id": "t1", "file_name": "测试.xlsx"}),
-            _make_call_tool_result({"status": "processing"}),
-            _make_call_tool_result({"status": "finished", "file_url": "https://example.com/file.xlsx"}),
+            _make_call_tool_result({"task_id": "t1"}),
+            _make_call_tool_result({"progress": 50}),
+            _make_call_tool_result({"progress": 100, "file_url": "https://example.com/file.xlsx", "file_name": "测试.xlsx"}),
         ]
 
         client = _TencentDocClient(token="fake-token")
@@ -86,15 +86,15 @@ class TestTencentDocClient(unittest.TestCase):
         self.assertEqual(file_url, "https://example.com/file.xlsx")
         self.assertEqual(file_name, "测试.xlsx")
         self.assertEqual(mock_call.call_count, 3)
-        mock_sleep.assert_called_once_with(5)
+        self.assertEqual(mock_sleep.call_count, 2)
 
     @patch("docupipe.sources.tencent.time.sleep", return_value=None)
     @patch("docupipe.sources.tencent._TencentDocClient._call_tool")
     def test_export_file_failed(self, mock_call, mock_sleep):
         """测试导出失败"""
         mock_call.side_effect = [
-            _make_call_tool_result({"ticket_id": "t1", "file_name": "测试.xlsx"}),
-            _make_call_tool_result({"status": "failed", "error": "权限不足"}),
+            _make_call_tool_result({"task_id": "t1"}),
+            _make_call_tool_result({"error": "权限不足"}),
         ]
 
         client = _TencentDocClient(token="fake-token")
@@ -155,7 +155,7 @@ class TestTencentSourceList(unittest.TestCase):
         """列出扁平文档列表"""
         source = self._make_source()
         source._client.list_nodes.return_value = {
-            "nodes": [
+            "children": [
                 {"node_id": "n1", "title": "文档1", "node_type": "doc", "doc_type": "document", "has_child": False},
                 {"node_id": "n2", "title": "文档2", "node_type": "sheet", "doc_type": "sheet", "has_child": False},
             ],
@@ -174,7 +174,7 @@ class TestTencentSourceList(unittest.TestCase):
         """跳过 wiki_folder 类型节点"""
         source = self._make_source()
         source._client.list_nodes.return_value = {
-            "nodes": [
+            "children": [
                 {"node_id": "f1", "title": "文件夹", "node_type": "wiki_folder", "doc_type": "", "has_child": False},
                 {"node_id": "n1", "title": "文档1", "node_type": "doc", "doc_type": "document", "has_child": False},
             ],
@@ -190,7 +190,7 @@ class TestTencentSourceList(unittest.TestCase):
         """按 include_types 过滤"""
         source = self._make_source(include_types=["sheet"])
         source._client.list_nodes.return_value = {
-            "nodes": [
+            "children": [
                 {"node_id": "n1", "title": "文档1", "node_type": "doc", "doc_type": "document", "has_child": False},
                 {"node_id": "n2", "title": "表格1", "node_type": "sheet", "doc_type": "sheet", "has_child": False},
             ],
@@ -209,7 +209,7 @@ class TestTencentSourceList(unittest.TestCase):
         source._client.list_nodes.side_effect = [
             # 第一次调用：根目录，含一个文件夹和一个文档
             {
-                "nodes": [
+                "children": [
                     {"node_id": "f1", "title": "子文件夹", "node_type": "wiki_folder", "doc_type": "", "has_child": True},
                     {"node_id": "n1", "title": "根文档", "node_type": "doc", "doc_type": "document", "has_child": False},
                 ],
@@ -217,7 +217,7 @@ class TestTencentSourceList(unittest.TestCase):
             },
             # 第二次调用：子文件夹内容
             {
-                "nodes": [
+                "children": [
                     {"node_id": "n2", "title": "子文档", "node_type": "doc", "doc_type": "document", "has_child": False},
                 ],
                 "has_next": False,
@@ -236,7 +236,7 @@ class TestTencentSourceList(unittest.TestCase):
         """parent_id 传递到 list_nodes"""
         source = self._make_source(parent_id="parent_1")
         source._client.list_nodes.return_value = {
-            "nodes": [
+            "children": [
                 {"node_id": "n1", "title": "文档1", "node_type": "doc", "doc_type": "document", "has_child": False},
             ],
             "has_next": False,
@@ -252,21 +252,21 @@ class TestTencentSourceList(unittest.TestCase):
         source._client.list_nodes.side_effect = [
             # 1. _resolve_folder_path: 解析 "产品" 文件夹
             {
-                "nodes": [
+                "children": [
                     {"node_id": "f1", "title": "产品", "node_type": "wiki_folder", "doc_type": "", "has_child": True},
                 ],
                 "has_next": False,
             },
             # 2. _resolve_folder_path: 解析 "方案" 子文件夹
             {
-                "nodes": [
+                "children": [
                     {"node_id": "f2", "title": "方案", "node_type": "wiki_folder", "doc_type": "", "has_child": True},
                 ],
                 "has_next": False,
             },
             # 3. _collect_nodes: 列出方案文件夹下的文档
             {
-                "nodes": [
+                "children": [
                     {"node_id": "n1", "title": "方案文档", "node_type": "doc", "doc_type": "document", "has_child": False},
                 ],
                 "has_next": False,
