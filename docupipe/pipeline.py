@@ -17,28 +17,42 @@ logger = logging.getLogger(__name__)
 class StateManager:
     def __init__(self, path: Path):
         self._path = path
+        self._cache: dict[str, dict] | None = None
+        self._dirty = False
 
     def load(self) -> dict[str, dict]:
+        if self._cache is not None:
+            return self._cache
         if not self._path.exists():
-            return {}
+            self._cache = {}
+            return self._cache
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return {}
+            self._cache = {}
+            return self._cache
         result = {}
         for k, v in raw.items():
             if isinstance(v, str):
                 result[k] = {"hash": v, "path": "", "status": "done"}
             else:
                 result[k] = v
-        return result
+        self._cache = result
+        return self._cache
 
-    def save(self, entries: dict[str, dict]) -> None:
+    def save(self, entries: dict[str, dict] | None = None) -> None:
+        if entries is not None:
+            self._cache = entries
+            self._dirty = True
+        if not self._dirty or self._cache is None:
+            return
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(
-            json.dumps(entries, indent=2, ensure_ascii=False),
+            json.dumps(self._cache, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        self._dirty = False
+
 
     def is_processed(self, doc_id: str) -> bool:
         entry = self.load().get(doc_id, {})
@@ -62,15 +76,25 @@ class StateManager:
                 "title": title,
                 "fetch_extra": fetch_extra,
             }
-        self.save(entries)
+        self._dirty = True
+        self.save()
 
-    def mark_done(self, doc_id: str, content_hash: str, path: str = "", mtime: int | None = None) -> None:
+    def mark_done(self, doc_id: str, content_hash: str, path: str = "", mtime: int | None = None,
+                  source_hash: str | None = None) -> None:
         entries = self.load()
         entry = {"status": "done", "hash": content_hash, "path": path}
         if mtime is not None:
             entry["mtime"] = mtime
+        if source_hash is not None:
+            entry["source_hash"] = source_hash
         entries[doc_id] = entry
-        self.save(entries)
+        self._dirty = True
+        self.save()
+
+    def is_source_unchanged(self, doc_id: str, current_source_hash: str) -> bool:
+        entry = self.load().get(doc_id, {})
+        stored = entry.get("source_hash") or entry.get("hash")
+        return stored == current_source_hash
 
     def get_path(self, doc_id: str) -> str:
         return self.load().get(doc_id, {}).get("path", "")
@@ -94,7 +118,8 @@ class StateManager:
     def mark_removed(self, doc_id: str) -> None:
         entries = self.load()
         entries.pop(doc_id, None)
-        self.save(entries)
+        self._dirty = True
+        self.save()
 
 
 def content_hash(content: str | bytes) -> str:
@@ -265,9 +290,10 @@ class Pipeline:
             bundle.context["filename"] = Path(meta.path).name if meta.path else ""
             bundle.context["_source"] = self.source.name
 
+            source_hash = bundle_hash(bundle)
+
             if change_detection == "hash" and self.state.is_processed(meta.id):
-                bundle_hash_value = bundle_hash(bundle)
-                if self.state.is_unchanged(meta.id, bundle_hash_value):
+                if self.state.is_source_unchanged(meta.id, source_hash):
                     self._display.result("skip", f"{_display_path} (hash 无变化)")
                     return
 
@@ -295,7 +321,7 @@ class Pipeline:
                 self._display.result("success", _display_path)
 
                 mtime = meta.extra.get("mtime")
-                self.state.mark_done(meta.id, bundle_hash_value, meta.path, mtime=mtime)
+                self.state.mark_done(meta.id, bundle_hash_value, meta.path, mtime=mtime, source_hash=source_hash)
 
                 for post_step in self._post_steps:
                     post_step.process(bundle)
