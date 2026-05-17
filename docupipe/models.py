@@ -17,7 +17,6 @@ class FileItem:
     content: str | bytes
     content_type: str = ""
     role: str = "main"
-    metadata: dict = field(default_factory=dict)
 
 
 @dataclass

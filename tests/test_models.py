@@ -9,11 +9,10 @@ class TestFileItem:
         f = FileItem(name="a.md", content="hello")
         assert f.content_type == ""
         assert f.role == "main"
-        assert f.metadata == {}
 
     def test_with_all_fields(self):
         f = FileItem(name="img.png", content=b"\x89PNG", content_type="image/png",
-                     role="image", metadata={"description": "a diagram"})
+                     role="image")
         assert f.role == "image"
         assert isinstance(f.content, bytes)
 

@@ -85,7 +85,6 @@ class LocalDriveSource(SourceBase):
                 content=content,
                 content_type=content_type,
                 role="main",
-                metadata={"absolute_path": str(abs_path)},
             )],
             context=dict(meta.extra),
         )
