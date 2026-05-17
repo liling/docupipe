@@ -1,0 +1,116 @@
+# ============================================================
+# 钉钉知识库 → HindSight Memory
+#
+# 将钉钉知识库中的文档同步到 HindSight，自动完成格式转换、
+# 图片提取与上传。
+#
+# 前置依赖：
+#   - dws CLI（钉钉知识库操作）
+#   - S3 兼容存储（用于托管图片附件）
+#
+# 环境变量：
+#   HINDSIGHT_API_URL      HindSight 服务地址
+#   HINDSIGHT_API_KEY      HindSight API 密钥
+#   HINDSIGHT_BANK_ID      HindSight Bank ID
+#   S3_ENDPOINT            S3 端点（默认 http://localhost:9000）
+#   S3_BUCKET              S3 存储桶（默认 hindsight）
+#   S3_URL_PREFIX          S3 URL 前缀（默认 http://localhost:9000/hindsight）
+#   IMAGE_DESCRIPTION_API_KEY
+#   IMAGE_DESCRIPTION_BASE_URL
+#   IMAGE_DESCRIPTION_MODEL 图片描述模型（默认 qwen3.5-flash）
+#
+# 用法：
+#   docupipe run --config examples/dingtalk-wiki-to-hindsight.yaml
+#   docupipe run --config examples/dingtalk-wiki-to-hindsight.yaml --pipeline dingtalk-to-hindsight
+#   docupipe run --config ... --resume   # 断点续传
+# ============================================================
+
+hindsight:
+  api_url: ${HINDSIGHT_API_URL}
+  api_key: ${HINDSIGHT_API_KEY}
+  bank_id: ${HINDSIGHT_BANK_ID}
+
+image_description:
+  api_key: ${IMAGE_DESCRIPTION_API_KEY}
+  base_url: ${IMAGE_DESCRIPTION_BASE_URL}
+  model: ${IMAGE_DESCRIPTION_MODEL:-qwen3.5-flash}
+  concurrency: 4
+
+converters:
+  extensions:
+    ".pdf": mineru
+    ".docx": markitdown
+    ".pptx": markitdown
+    ".xlsx": markitdown
+    ".doc": markitdown
+    ".xls": markitdown
+    ".ppt": markitdown
+
+s3_upload:
+  endpoint_url: ${S3_ENDPOINT:-http://localhost:9000}
+  region: ${S3_REGION:-us-east-1}
+  bucket: ${S3_BUCKET:-hindsight}
+  access_key: ${S3_ACCESS_KEY:-rustfsadmin}
+  secret_key: ${S3_SECRET_KEY:-rustfsadmin}
+  prefix: attachments
+  url_prefix: ${S3_URL_PREFIX:-http://localhost:9000/hindsight}
+  roles: ["image"]
+
+pipelines:
+
+  # ======== ALL-IN-ONE：钉钉知识库 → HindSight ========
+  - name: dingtalk-to-hindsight
+    source:
+      dingtalk:
+        space: 平台产品知识库
+        folders: ["产品规划物料/解决方案"]
+        include_types: [DOCUMENT, ALIDOC]
+    destination:
+      hindsight:
+        context_prefix: "平台产品知识库"
+    steps:
+      - convert
+      # - image_description    # 按需开启 AI 图片描述
+      - s3_upload
+
+  # ======== 分阶段执行（适合调试和观察中间结果）========
+  # 阶段 1：钉钉知识库 → 本地（原始格式）
+  - name: stage1-download
+    source:
+      dingtalk:
+        space: 平台产品知识库
+        folders: ["产品规划物料/解决方案"]
+        include_types: [DOCUMENT, ALIDOC]
+    destination:
+      localdrive:
+        output_dir: ./output/dingtalk
+        save_sidecar: true
+    steps: []
+
+  # 阶段 2：本地 → 本地（格式转换为 markdown）
+  - name: stage2-convert
+    source:
+      localdrive:
+        input_dir: ./output/dingtalk
+        include: ["*.docx", "*.pptx", "*.xlsx", "*.pdf", "*.md"]
+    destination:
+      localdrive:
+        output_dir: ./output/markdown
+        replace_extension: true
+        save_sidecar: false
+    steps:
+      - convert
+      # - image_description
+
+  # 阶段 3：本地 → HindSight
+  - name: stage3-upload
+    source:
+      localdrive:
+        input_dir: ./output/markdown/平台产品知识库/产品规划物料/解决方案
+        include: ["*.md"]
+    destination:
+      hindsight:
+        context_prefix: "平台产品知识库"
+    steps:
+      - resolve_attachments
+      - s3_upload

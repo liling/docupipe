@@ -1,0 +1,38 @@
+# ============================================================
+# 快速开始：本地文件 → 本地文件
+# 最简单的入门示例，无需任何外部依赖。
+# 用法：docupipe run --config examples/quick-start.yaml
+# ============================================================
+
+converters:
+  extensions:
+    ".pdf": mineru
+    ".docx": markitdown
+    ".pptx": markitdown
+
+pipelines:
+
+  # 场景：将 input 目录中的 Markdown 文件直接拷贝到 output 目录
+  - name: copy-md
+    source:
+      localdrive:
+        input_dir: ./input
+        include: ["*.md"]
+    destination:
+      localdrive:
+        output_dir: ./output
+        save_sidecar: false
+    steps: []
+
+  # 场景：将 input 目录中的 docx 文件转换为 markdown 后输出
+  - name: convert-docx
+    source:
+      localdrive:
+        input_dir: ./input
+        include: ["*.docx"]
+    destination:
+      localdrive:
+        output_dir: ./output
+        replace_extension: true
+    steps:
+      - convert
