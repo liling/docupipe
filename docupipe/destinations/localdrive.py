@@ -10,8 +10,9 @@ from docupipe.models import Bundle
 
 @register_destination("localdrive")
 class LocalDriveDestination(DestinationBase):
-    def __init__(self, output_dir: str, **kwargs):
+    def __init__(self, output_dir: str, replace_extension: bool = False, **kwargs):
         self._output_dir = Path(output_dir)
+        self._replace_extension = replace_extension
 
     def write(self, bundle: Bundle) -> str:
         """写入Bundle到本地磁盘，包括主文件和所有附件"""
@@ -79,14 +80,19 @@ class LocalDriveDestination(DestinationBase):
         space_name = context.get("space_name", "")
         rel_path = context["path"]
 
-        # 追加扩展名
+        # 追加或替换扩展名
         main_file = bundle.main
         if main_file:
             ext = self._content_type_to_ext(main_file.content_type)
         else:
             ext = ""
         if ext and not rel_path.endswith(ext):
-            rel_path = rel_path + ext
+            if self._replace_extension:
+                stem = Path(rel_path).stem
+                parent = str(Path(rel_path).parent)
+                rel_path = f"{parent}/{stem}{ext}" if parent != "." else f"{stem}{ext}"
+            else:
+                rel_path = rel_path + ext
 
         if space_name:
             return self._output_dir / space_name / rel_path
