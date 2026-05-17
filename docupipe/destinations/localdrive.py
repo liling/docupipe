@@ -10,9 +10,10 @@ from docupipe.models import Bundle
 
 @register_destination("localdrive")
 class LocalDriveDestination(DestinationBase):
-    def __init__(self, output_dir: str, replace_extension: bool = False, **kwargs):
+    def __init__(self, output_dir: str, replace_extension: bool = False, save_sidecar: bool = True, **kwargs):
         self._output_dir = Path(output_dir)
         self._replace_extension = replace_extension
+        self._save_sidecar = save_sidecar
 
     def write(self, bundle: Bundle) -> str:
         """写入Bundle到本地磁盘，包括主文件和所有附件"""
@@ -32,11 +33,13 @@ class LocalDriveDestination(DestinationBase):
                     pass  # 跳过主文件写入，但可能需要检查附件
                 else:
                     self._write_main_file(main_path, main_file)
-                    self._write_sidecar(main_path, bundle)
+                    if self._save_sidecar:
+                        self._write_sidecar(main_path, bundle)
         else:
             main_path.parent.mkdir(parents=True, exist_ok=True)
             self._write_main_file(main_path, main_file)
-            self._write_sidecar(main_path, bundle)
+            if self._save_sidecar:
+                self._write_sidecar(main_path, bundle)
 
         # 写入所有非主文件（图片、附件等）
         main_dir = main_path.parent
