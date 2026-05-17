@@ -143,8 +143,8 @@ class Display:
                 self.skipped += 1
                 self._advance_progress()
             elif status == "info":
-                self.completed += 1
-                self._advance_progress()
+                if self._progress and self._progress_task_id is not None:
+                    self._progress.update(self._progress_task_id, advance=1)
             else:
                 # error: 不计数不推进，由 add_failure() 负责
                 pass
