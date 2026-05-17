@@ -205,9 +205,9 @@ class TestPipelineModes:
             pipeline.run(mode="mirror")
 
     def test_post_steps_executed_after_write(self, tmp_path):
-        from docupipe.post_steps.base import PostStep
+        from docupipe.steps.base import Step
         executed = []
-        class SpyPostStep(PostStep):
+        class SpyPostStep(Step):
             name = "spy"
             def process(self, bundle):
                 executed.append(bundle.context["id"])
@@ -220,9 +220,9 @@ class TestPipelineModes:
         assert executed == ["1"]
 
     def test_post_steps_not_executed_on_skip(self, tmp_path):
-        from docupipe.post_steps.base import PostStep
+        from docupipe.steps.base import Step
         executed = []
-        class SpyPostStep(PostStep):
+        class SpyPostStep(Step):
             name = "spy"
             def process(self, bundle):
                 executed.append(bundle.context["id"])
@@ -1208,6 +1208,19 @@ class TestStepRegistry:
         with pytest.raises(ValueError, match="未知的 step"):
             get_step("nonexistent")
 
+    def test_register_and_get(self):
+        from docupipe.steps import STEPS, register_step, get_step
+        from docupipe.steps.base import Step
+
+        @register_step("test_step_reg")
+        class _TestStep(Step):
+            def process(self, bundle):
+                return bundle
+
+        assert "test_step_reg" in STEPS
+        assert get_step("test_step_reg") is _TestStep
+        STEPS.pop("test_step_reg", None)
+
 
 class TestConvertStep:
     def test_needs_conversion_with_matching_extension(self):
@@ -1334,27 +1347,6 @@ class TestImageDescriptionStep:
         )
 
         result = step.process(bundle)
-
-
-class TestPostStepRegistry:
-    def test_get_unknown_raises(self):
-        from docupipe.post_steps import get_post_step
-        with pytest.raises(ValueError, match="未知的 post_step"):
-            get_post_step("nonexistent")
-
-    def test_register_and_get(self):
-        from docupipe.post_steps import POST_STEPS, register_post_step, get_post_step
-        from docupipe.post_steps.base import PostStep
-
-        @register_post_step("test_post")
-        class _TestPost(PostStep):
-            def process(self, bundle):
-                return bundle
-
-        assert "test_post" in POST_STEPS
-        assert get_post_step("test_post") is _TestPost
-        # 清理
-        POST_STEPS.pop("test_post", None)
 
 
 class TestSourceChangeDetection:

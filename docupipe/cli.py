@@ -54,7 +54,6 @@ def _run_from_config(ctx, config_path, pipeline_name, cli_mode, cli_resume, cli_
     from docupipe.destinations import get_destination
     from docupipe.display import Display
     from docupipe.pipeline import Pipeline
-    from docupipe.post_steps import get_post_step
     from docupipe.sources import get_source
     from docupipe.steps import get_step
 
@@ -74,6 +73,24 @@ def _run_from_config(ctx, config_path, pipeline_name, cli_mode, cli_resume, cli_
             click.echo(f"未找到 pipeline: {pipeline_name}")
             raise SystemExit(1)
 
+    def _load_steps(specs, global_config, extension_rules):
+        steps = []
+        for spec in specs:
+            if isinstance(spec, str):
+                name = spec
+                kwargs = {}
+            else:
+                items = list(spec.items())
+                name, kwargs = items[0] if items else ("", {})
+            global_step_config = global_config.get(name, {})
+            if global_step_config:
+                kwargs = deep_merge(global_step_config, kwargs)
+            if name == "convert":
+                kwargs["extension_rules"] = extension_rules
+            step_cls = get_step(name)
+            steps.append(step_cls(**kwargs))
+        return steps
+
     for pipe_config in pipelines:
         source_name, source_kwargs = parse_component_config(pipe_config, global_config, "source")
         source = get_source(source_name)(**source_kwargs)
@@ -81,29 +98,8 @@ def _run_from_config(ctx, config_path, pipeline_name, cli_mode, cli_resume, cli_
         dest_name, dest_kwargs = parse_component_config(pipe_config, global_config, "destination")
         dest = get_destination(dest_name)(**dest_kwargs)
 
-        steps = []
-        for step_spec in pipe_config.get("steps", []):
-            if isinstance(step_spec, str):
-                step_name = step_spec
-                step_kwargs = {}
-            else:
-                items = list(step_spec.items())
-                step_name, step_kwargs = items[0] if items else ("", {})
-
-            global_step_config = global_config.get(step_name, {})
-            if global_step_config:
-                step_kwargs = deep_merge(global_step_config, step_kwargs)
-
-            if step_name == "convert":
-                step_kwargs["extension_rules"] = extension_rules
-
-            step_cls = get_step(step_name)
-            steps.append(step_cls(**step_kwargs))
-
-        post_steps = []
-        for ps_name in pipe_config.get("post_steps", []):
-            ps_cls = get_post_step(ps_name)
-            post_steps.append(ps_cls())
+        steps = _load_steps(pipe_config.get("steps", []), global_config, extension_rules)
+        post_steps = _load_steps(pipe_config.get("post_steps", []), global_config, extension_rules)
 
         pipe_name = pipe_config.get("name", "")
         effective_mode = cli_mode or pipe_config.get("mode", "full")
