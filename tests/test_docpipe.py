@@ -238,6 +238,66 @@ class TestPipelineModes:
         pipeline2.run(mode="mirror")
         assert len(executed) == 1
 
+    def test_finalize_steps_executed_after_all_processed(self, tmp_path):
+        """finalize_steps 在所有文档处理完毕后执行"""
+        from docupipe.steps.base import Step
+        order = []
+        class SpyFinalizeStep(Step):
+            name = "spy_finalize"
+            def process(self, bundle):
+                order.append(("finalize", bundle.context["id"]))
+                return bundle
+        bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test",
+                            finalize_steps=[SpyFinalizeStep()])
+        pipeline.run(mode="full")
+        assert order == [("finalize", "1"), ("finalize", "2")]
+
+    def test_finalize_steps_not_run_on_dry_run(self, tmp_path):
+        """dry_run 模式下 finalize_steps 不执行"""
+        from docupipe.steps.base import Step
+        order = []
+        class SpyFinalizeStep(Step):
+            name = "spy_finalize"
+            def process(self, bundle):
+                order.append(bundle.context["id"])
+                return bundle
+        bundles = [_make_bundle("1", "A")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test",
+                            finalize_steps=[SpyFinalizeStep()])
+        pipeline.run(mode="full", dry_run=True)
+        assert order == []
+
+    def test_finalize_steps_collects_only_successful(self, tmp_path):
+        """只有成功写入的文档才会触发 finalize_steps"""
+        from docupipe.steps.base import Step
+        finalized = []
+        class SpyFinalizeStep(Step):
+            name = "spy_finalize"
+            def process(self, bundle):
+                finalized.append(bundle.context["id"])
+                return bundle
+        source2 = _FakeSourceWithMeta(
+            metas=[_make_meta("1", "A"), _make_meta("2", "B")],
+            bundles={"1": _make_bundle("1", "A")}
+        )
+        original_fetch = source2.fetch
+        def patched_fetch(meta):
+            if meta.id == "2":
+                raise SkipBundle("跳过")
+            return original_fetch(meta)
+        source2.fetch = patched_fetch
+
+        dest = FakeDestination()
+        pipeline = Pipeline(source2, dest, tmp_path, pipeline_name="test",
+                            finalize_steps=[SpyFinalizeStep()])
+        pipeline.run(mode="full")
+        assert finalized == ["1"]
+
     def test_state_file_named_by_pipeline(self, tmp_path):
         bundles = [_make_bundle("1", "A")]
         source = FakeSource(bundles)

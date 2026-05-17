@@ -145,6 +145,7 @@ class Pipeline:
         display: Display | None = None,
         steps: list | None = None,
         post_steps: list | None = None,
+        finalize_steps: list | None = None,
         dest_config: dict | None = None,
         state_file: str | None = None,
         mode: str = "full",
@@ -162,6 +163,7 @@ class Pipeline:
         self._display = display or Display()
         self._steps = steps
         self._post_steps = post_steps or []
+        self._finalize_steps = finalize_steps or []
         self._dest_config = dest_config
         self._mode = mode
         self._change_detection = change_detection
@@ -175,6 +177,8 @@ class Pipeline:
         logger.info("Pipeline 开始: %s → %s (mode=%s, cd=%s, dry_run=%s)",
                      self.source.name, self.dest.name, effective_mode, effective_cd, dry_run)
 
+        self._finalized_bundles: list[Bundle] = []
+
         if effective_mode == "full" and resume:
             self._run_full_resume(dry_run)
         elif effective_mode == "full":
@@ -186,6 +190,8 @@ class Pipeline:
             self._run_mirror(effective_cd, dry_run)
         else:
             raise ValueError(f"未知的运行模式: {effective_mode}")
+
+        self._run_finalize_steps(dry_run)
 
         self._display.stop()
         self._display.print_summary()
@@ -200,6 +206,17 @@ class Pipeline:
                 f"source '{self.source.name}' 不支持变更检测策略 '{cd}'，"
                 f"支持的策略: {', '.join(supported) or '(无)'}"
             )
+
+    def _run_finalize_steps(self, dry_run: bool) -> None:
+        if dry_run or not self._finalized_bundles or not self._finalize_steps:
+            return
+        logger.info("执行 finalize_steps: %d 个文档", len(self._finalized_bundles))
+        for bundle in self._finalized_bundles:
+            for step in self._finalize_steps:
+                try:
+                    step.process(bundle)
+                except Exception as e:
+                    logger.error("finalize_step 失败: %s - %s", bundle.context.get("path", ""), e)
 
     def _run_full(self, dry_run: bool) -> None:
         metas = self.source.list()
@@ -325,6 +342,9 @@ class Pipeline:
 
                 for post_step in self._post_steps:
                     post_step.process(bundle)
+
+                if self._finalize_steps:
+                    self._finalized_bundles.append(bundle)
 
         except SkipBundle as e:
             logger.info("跳过文档: %s - %s", meta.path, e)
