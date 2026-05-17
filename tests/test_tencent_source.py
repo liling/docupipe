@@ -166,7 +166,7 @@ class TestTencentSourceList(unittest.TestCase):
         self.assertEqual(len(metas), 2)
         self.assertEqual(metas[0].id, "n1")
         self.assertEqual(metas[0].title, "文档1")
-        self.assertEqual(metas[0].extra["doc_type"], "document")
+        self.assertEqual(metas[0].extra["tencent_doc_type"], "document")
         self.assertEqual(metas[1].id, "n2")
 
     def test_skips_folders(self):
@@ -200,7 +200,7 @@ class TestTencentSourceList(unittest.TestCase):
 
         self.assertEqual(len(metas), 1)
         self.assertEqual(metas[0].id, "n2")
-        self.assertEqual(metas[0].extra["doc_type"], "sheet")
+        self.assertEqual(metas[0].extra["tencent_doc_type"], "sheet")
 
     def test_recursive_folders(self):
         """递归收集子文件夹中的文档"""
@@ -293,7 +293,7 @@ class TestTencentSourceFetch(unittest.TestCase):
         defaults = {
             "id": "file_123",
             "title": "测试文档",
-            "extra": {"doc_type": "word", "node_type": "wiki_file"},
+            "extra": {"tencent_doc_type": "word", "node_type": "wiki_file"},
         }
         defaults.update(overrides)
         return BundleMeta(**defaults)

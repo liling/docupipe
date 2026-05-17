@@ -15,6 +15,7 @@ import requests
 from docupipe.models import Bundle, BundleMeta, FileItem
 from docupipe.sources import register_source
 from docupipe.sources.base import SourceBase
+from docupipe.utils import guess_mime_type
 
 logger = logging.getLogger(__name__)
 
@@ -193,9 +194,9 @@ class TencentSource(SourceBase):
                 path=node.get("_path", ""),
                 hash="",
                 extra={
-                    "doc_type": doc_type,
-                    "node_type": node_type,
-                    "has_child": node.get("has_child", False),
+                    "tencent_doc_type": doc_type,
+                    "tencent_node_type": node_type,
+                    "tencent_has_child": node.get("has_child", False),
                 },
             ))
 
@@ -224,12 +225,12 @@ class TencentSource(SourceBase):
             resp = requests.get(file_url, timeout=120)
             resp.raise_for_status()
 
-            ext = _DOC_TYPE_EXT.get(meta.extra.get("doc_type", ""), "docx")
+            ext = _DOC_TYPE_EXT.get(meta.extra.get("tencent_doc_type", ""), "docx")
             context["extension"] = ext
             files.append(FileItem(
                 name=f"{meta.title}.{ext}",
                 content=resp.content,
-                content_type=ext,
+                content_type=guess_mime_type(ext),
                 role="main" if self._fetch_mode == "export" else "attachment",
             ))
 
