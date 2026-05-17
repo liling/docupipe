@@ -311,7 +311,6 @@ class TestTencentSourceFetch(unittest.TestCase):
         self.assertEqual(bundle.files[0].content, "# 标题\n正文内容")
         self.assertEqual(bundle.files[0].content_type, "text/markdown")
         self.assertEqual(bundle.files[0].role, "main")
-        self.assertNotIn("_needs_conversion", bundle.context)
 
     @patch("docupipe.sources.tencent.requests.get")
     def test_fetch_export_mode(self, mock_get):
@@ -331,7 +330,6 @@ class TestTencentSourceFetch(unittest.TestCase):
         self.assertEqual(bundle.files[0].name, "测试文档.docx")
         self.assertEqual(bundle.files[0].content, b"xlsx-bytes")
         self.assertEqual(bundle.files[0].role, "main")
-        self.assertTrue(bundle.context.get("_needs_conversion"))
         source._client.export_file.assert_called_once_with("file_123")
 
     def test_fetch_both_mode(self):
@@ -357,7 +355,6 @@ class TestTencentSourceFetch(unittest.TestCase):
         # 导出文件
         self.assertEqual(bundle.files[1].name, "测试文档.docx")
         self.assertEqual(bundle.files[1].role, "attachment")
-        self.assertTrue(bundle.context.get("_needs_conversion"))
 
 
 if __name__ == "__main__":

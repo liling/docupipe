@@ -226,7 +226,6 @@ class DingtalkSource(SourceBase):
             content = resp.content
             logger.debug("文件下载成功: node_id=%s, 大小=%d bytes", node_id, len(content))
 
-            context["_needs_conversion"] = True
             filename = f"{meta.title}.{extension}" if extension else meta.title
             return Bundle(
                 files=[FileItem(
