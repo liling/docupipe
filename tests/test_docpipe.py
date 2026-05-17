@@ -1125,3 +1125,24 @@ class TestImageDescriptionStep:
         )
 
         result = step.process(bundle)
+
+
+class TestPostStepRegistry:
+    def test_get_unknown_raises(self):
+        from docupipe.post_steps import get_post_step
+        with pytest.raises(ValueError, match="未知的 post_step"):
+            get_post_step("nonexistent")
+
+    def test_register_and_get(self):
+        from docupipe.post_steps import POST_STEPS, register_post_step, get_post_step
+        from docupipe.post_steps.base import PostStep
+
+        @register_post_step("test_post")
+        class _TestPost(PostStep):
+            def process(self, bundle):
+                return bundle
+
+        assert "test_post" in POST_STEPS
+        assert get_post_step("test_post") is _TestPost
+        # 清理
+        POST_STEPS.pop("test_post", None)
