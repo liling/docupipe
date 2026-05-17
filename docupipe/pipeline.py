@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 
+from docupipe.config import resolve_context_vars
 from docupipe.destinations.base import DestinationBase
 from docupipe.display import Display
 from docupipe.models import Bundle, BundleMeta, SkipBundle
@@ -87,12 +88,14 @@ class Pipeline:
         state_dir: Path,
         display: Display | None = None,
         steps: list | None = None,
+        dest_config: dict | None = None,
     ):
         self.source = source
         self.dest = dest
         self.state = StateManager(state_dir / f"{source.name}_{dest.name}_state.json")
         self._display = display or Display()
         self._steps = steps
+        self._dest_config = dest_config
 
     def run(self, *, resume: bool = False, sync: bool = False, dry_run: bool = False) -> None:
         logger.info("Pipeline 开始: %s → %s (resume=%s, sync=%s, dry_run=%s)",
@@ -120,6 +123,7 @@ class Pipeline:
                 bundle.context["id"] = meta.id
                 bundle.context["title"] = meta.title
                 bundle.context["path"] = meta.path
+                bundle.context["filename"] = Path(meta.path).name if meta.path else ""
                 bundle.context["_source"] = self.source.name
 
                 # 运行处理步骤
@@ -141,6 +145,9 @@ class Pipeline:
                 if dry_run:
                     self._display.result("info", f"[dry-run] {_display_path}")
                 else:
+                    if self._dest_config:
+                        resolved = resolve_context_vars(self._dest_config, bundle.context)
+                        self.dest.update_config(resolved)
                     self.dest.write(bundle)
                     self._display.result("success", _display_path)
                     self.state.mark_done(meta.id, bundle_hash_value, meta.path)

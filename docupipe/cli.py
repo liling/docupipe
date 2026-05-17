@@ -99,7 +99,8 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
         options = pipe_config.get("options", {})
         try:
             pipeline = Pipeline(source, dest, ctx.obj["state_dir"],
-                                display=Display(), steps=steps)
+                                display=Display(), steps=steps,
+                                dest_config=dest_kwargs)
             pipeline.run(
                 resume=resume or options.get("resume", False),
                 sync=sync_mode or options.get("sync", False),
