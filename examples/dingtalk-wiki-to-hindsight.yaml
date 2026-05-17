@@ -22,7 +22,9 @@
 # 用法：
 #   docupipe run --config examples/dingtalk-wiki-to-hindsight.yaml
 #   docupipe run --config examples/dingtalk-wiki-to-hindsight.yaml --pipeline dingtalk-to-hindsight
-#   docupipe run --config ... --resume   # 断点续传
+#   docupipe run --config ... --resume           # full 模式断点续传
+#   docupipe run --config ... --mode incremental  # 只处理新增
+#   docupipe run --config ... --mode mirror --change-detection mtime  # 增量同步
 # ============================================================
 
 hindsight:
