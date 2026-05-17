@@ -1381,3 +1381,50 @@ class TestSourceChangeDetection:
     def test_tencent_supports_hash_only(self):
         from docupipe.sources.tencent import TencentSource
         assert sorted(TencentSource.supported_change_detection(TencentSource)) == ["hash"]
+
+
+class TestCLIConfig:
+    def test_parse_mode_from_config(self, tmp_path):
+        import yaml
+        config = {
+            "pipelines": [{
+                "name": "test",
+                "mode": "incremental",
+                "source": {"fake": {}},
+                "destination": {"fake": {}},
+            }]
+        }
+        path = tmp_path / "test.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert raw["pipelines"][0]["mode"] == "incremental"
+
+    def test_parse_post_steps_from_config(self, tmp_path):
+        import yaml
+        config = {
+            "pipelines": [{
+                "name": "test",
+                "post_steps": ["some_post_step"],
+                "source": {"fake": {}},
+                "destination": {"fake": {}},
+            }]
+        }
+        path = tmp_path / "test.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert raw["pipelines"][0]["post_steps"] == ["some_post_step"]
+
+    def test_parse_state_file_from_config(self, tmp_path):
+        import yaml
+        config = {
+            "pipelines": [{
+                "name": "test",
+                "state_file": "custom_state.json",
+                "source": {"fake": {}},
+                "destination": {"fake": {}},
+            }]
+        }
+        path = tmp_path / "test.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert raw["pipelines"][0]["state_file"] == "custom_state.json"

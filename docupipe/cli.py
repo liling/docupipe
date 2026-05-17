@@ -35,22 +35,26 @@ def main(ctx, state_dir, log_level):
 @main.command()
 @click.option("--config", "config_path", default="docupipe.yaml", help="配置文件路径")
 @click.option("--pipeline", "pipeline_name", default=None, help="配置文件中的 pipeline 名称")
-@click.option("--resume", is_flag=True, default=False, help="跳过已处理的文档")
-@click.option("--sync", "sync_mode", is_flag=True, default=False, help="仅同步有变化的文档")
+@click.option("--mode", type=click.Choice(["full", "incremental", "mirror"]), default=None,
+              help="运行模式（覆盖配置）")
+@click.option("--resume", is_flag=True, default=False, help="full 模式下断点续传")
+@click.option("--change-detection", type=click.Choice(["mtime", "hash"]), default=None,
+              help="mirror 模式的变更检测策略（覆盖配置）")
 @click.option("--dry-run", is_flag=True, default=False, help="只打印不执行")
 @click.pass_context
-def run(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
+def run(ctx, config_path, pipeline_name, mode, resume, change_detection, dry_run):
     """运行文档传输 pipeline"""
-    _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run)
+    _run_from_config(ctx, config_path, pipeline_name, mode, resume, change_detection, dry_run)
 
 
-def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run):
+def _run_from_config(ctx, config_path, pipeline_name, cli_mode, cli_resume, cli_change_detection, dry_run):
     import yaml
 
     from docupipe.config import deep_merge, execute_variables_script, parse_component_config, resolve_env_vars
     from docupipe.destinations import get_destination
     from docupipe.display import Display
     from docupipe.pipeline import Pipeline
+    from docupipe.post_steps import get_post_step
     from docupipe.sources import get_source
     from docupipe.steps import get_step
 
@@ -96,14 +100,31 @@ def _run_from_config(ctx, config_path, pipeline_name, resume, sync_mode, dry_run
             step_cls = get_step(step_name)
             steps.append(step_cls(**step_kwargs))
 
+        post_steps = []
+        for ps_name in pipe_config.get("post_steps", []):
+            ps_cls = get_post_step(ps_name)
+            post_steps.append(ps_cls())
+
+        pipe_name = pipe_config.get("name", "")
+        effective_mode = cli_mode or pipe_config.get("mode", "full")
+        effective_cd = cli_change_detection or pipe_config.get("change_detection")
         options = pipe_config.get("options", {})
+
         try:
-            pipeline = Pipeline(source, dest, ctx.obj["state_dir"],
-                                display=Display(), steps=steps,
-                                dest_config=dest_kwargs)
+            pipeline = Pipeline(
+                source, dest, ctx.obj["state_dir"],
+                pipeline_name=pipe_name,
+                display=Display(),
+                steps=steps,
+                post_steps=post_steps,
+                dest_config=dest_kwargs,
+                state_file=pipe_config.get("state_file"),
+                mode=effective_mode,
+                change_detection=effective_cd,
+                mirror_delete=options.get("mirror_delete", True),
+            )
             pipeline.run(
-                resume=resume or options.get("resume", False),
-                sync=sync_mode or options.get("sync", False),
+                resume=cli_resume,
                 dry_run=dry_run,
             )
         finally:
