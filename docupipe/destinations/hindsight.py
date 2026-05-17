@@ -73,7 +73,7 @@ class HindsightDestination(DestinationBase):
                 context_str = f"文档：{bundle_context['title']}"
 
         # timestamp
-        update_time = bundle_context.get("updateTime")
+        update_time = bundle_context.get("dingtalk_update_time")
         if update_time:
             tz = timezone(timedelta(hours=8))
             dt = datetime.fromtimestamp(update_time / 1000, tz=tz)
@@ -94,12 +94,12 @@ class HindsightDestination(DestinationBase):
             "metadata": {
                 "id": bundle_context["id"],
                 "title": bundle_context["title"],
-                "contentType": bundle_context.get("contentType", ""),
+                "content_type": bundle_context.get("dingtalk_content_type", ""),
                 "extension": bundle_context.get("extension", ""),
                 "space_name": bundle_context.get("space_name", ""),
                 "relative_path": bundle_context["path"],
                 "full_path": f"{bundle_context.get('space_name', '')}/{bundle_context['path']}" if bundle_context.get("space_name") else bundle_context["path"],
                 "content_hash": bundle_context["hash"],
-                "updateTime": str(update_time) if update_time else "",
+                "update_time": str(update_time) if update_time else "",
             },
         }

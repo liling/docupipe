@@ -106,7 +106,7 @@ class LocalDriveDestination(DestinationBase):
         data = {
             "id": context["id"],
             "title": context["title"],
-            "contentType": context.get("contentType", ""),
+            "content_type": context.get("dingtalk_content_type", ""),
             "extension": context.get("extension", ""),
             "space_name": space_name,
             "relative_path": context["path"],
