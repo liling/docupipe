@@ -1,0 +1,49 @@
+# ============================================================
+# 腾讯文档知识库 → Obsidian Vault
+#
+# 从腾讯文档知识库获取文档内容，写入本地 Obsidian vault。
+# Obsidian 读取本地 Markdown 文件，因此使用 localdrive 目的地
+# 将文档直接写入 vault 目录即可。
+#
+# 提供两种获取方式：
+#   1. markdown 直出（推荐）— 简单快速，无需转换步骤
+#   2. export + convert    — 先导出为 docx 再转 markdown，格式保留更好
+#
+# 前置依赖：
+#   - TENCENT_DOCS_TOKEN 环境变量（腾讯文档 MCP Token）
+#
+# 环境变量：
+#   TENCENT_DOCS_TOKEN  腾讯文档 MCP 认证 Token
+#
+# 用法：
+#   docupipe run --config examples/tencent-docs-to-obsidian.yaml
+#   docupipe run --config examples/tencent-docs-to-obsidian.yaml \
+#     --pipeline tencent-docs-to-obsidian
+# ============================================================
+
+variables:
+  script: |
+    from datetime import date
+    today = date.today()
+    return {"year": str(today.year), "month": f"{today.month:02d}"}
+
+converters:
+  extensions:
+    ".docx": markitdown
+
+pipelines:
+
+  - name: tencent-docs-to-obsidian
+    source:
+      tencent:
+        space_name: "个人空间"
+        folders: ["微信公众号文章"]
+        fetch_mode: export
+    destination:
+      localdrive:
+        output_dir: output/obsidian-vault/公众号文章/${year}/${month}
+        path_template: ${context.filename}
+        replace_extension: true
+        save_sidecar: false
+    steps:
+      - convert
