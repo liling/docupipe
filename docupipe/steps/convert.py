@@ -74,6 +74,7 @@ class ConvertStep(PipelineStep):
                 # 将图片文件加入 Bundle
                 for img in images:
                     bundle.add(img)
+                bundle.context["image_prefix"] = "images"
 
             # 更新主文件内容
             main.content = markdown

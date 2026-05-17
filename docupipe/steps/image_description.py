@@ -30,14 +30,13 @@ class ImageDescriptionStep(PipelineStep):
             return bundle
 
         # 从 bundle 获取图片文件，构建 image_files 映射
-        # ConvertStep 创建的引用格式为 "images/image_1.png"
-        # FileItem.name 为 "image_1.png"，需要映射两种 key
+        # 如果 ConvertStep 设置了图片前缀，添加带前缀的映射
+        image_prefix = bundle.context.get("image_prefix", "")
         image_files: dict[str, FileItem] = {}
         for image_item in bundle.get_by_role("image"):
             image_files[image_item.name] = image_item
-            # 添加带 images/ 前缀的映射（与 ConvertStep 输出的 URL 格式对应）
-            if "/" not in image_item.name:
-                image_files[f"images/{image_item.name}"] = image_item
+            if image_prefix and "/" not in image_item.name:
+                image_files[f"{image_prefix}/{image_item.name}"] = image_item
 
         source_context = bundle.context.get("title", "")
         progress_cb = bundle.context.get("_step_progress")
