@@ -77,14 +77,13 @@ class TestTencentDocClient(unittest.TestCase):
         mock_call.side_effect = [
             _make_call_tool_result({"task_id": "t1"}),
             _make_call_tool_result({"progress": 50}),
-            _make_call_tool_result({"progress": 100, "file_url": "https://example.com/file.xlsx", "file_name": "测试.xlsx"}),
+            _make_call_tool_result({"progress": 100, "file_url": "https://example.com/file.xlsx"}),
         ]
 
         client = _TencentDocClient(token="fake-token")
-        file_url, file_name = client.export_file("file_123")
+        file_url = client.export_file("file_123")
 
         self.assertEqual(file_url, "https://example.com/file.xlsx")
-        self.assertEqual(file_name, "测试.xlsx")
         self.assertEqual(mock_call.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
 
@@ -294,7 +293,7 @@ class TestTencentSourceFetch(unittest.TestCase):
         defaults = {
             "id": "file_123",
             "title": "测试文档",
-            "extra": {"doc_type": "document", "node_type": "doc"},
+            "extra": {"doc_type": "word", "node_type": "wiki_file"},
         }
         defaults.update(overrides)
         return BundleMeta(**defaults)
@@ -318,7 +317,7 @@ class TestTencentSourceFetch(unittest.TestCase):
     def test_fetch_export_mode(self, mock_get):
         """export 模式下载文件"""
         source = self._make_source(fetch_mode="export")
-        source._client.export_file.return_value = ("https://example.com/file.xlsx", "测试.xlsx")
+        source._client.export_file.return_value = "https://example.com/file.xlsx"
 
         mock_resp = MagicMock()
         mock_resp.content = b"xlsx-bytes"
@@ -329,7 +328,7 @@ class TestTencentSourceFetch(unittest.TestCase):
         bundle = source.fetch(meta)
 
         self.assertEqual(len(bundle.files), 1)
-        self.assertEqual(bundle.files[0].name, "测试.xlsx")
+        self.assertEqual(bundle.files[0].name, "测试文档.docx")
         self.assertEqual(bundle.files[0].content, b"xlsx-bytes")
         self.assertEqual(bundle.files[0].role, "main")
         self.assertTrue(bundle.context.get("_needs_conversion"))
@@ -341,7 +340,7 @@ class TestTencentSourceFetch(unittest.TestCase):
         source._client.get_content.return_value = "# 标题"
 
         with patch("docupipe.sources.tencent.requests.get") as mock_get:
-            source._client.export_file.return_value = ("https://example.com/file.docx", "测试.docx")
+            source._client.export_file.return_value = "https://example.com/file.docx"
             mock_resp = MagicMock()
             mock_resp.content = b"docx-bytes"
             mock_resp.raise_for_status = MagicMock()
@@ -356,7 +355,7 @@ class TestTencentSourceFetch(unittest.TestCase):
         self.assertEqual(bundle.files[0].content_type, "text/markdown")
         self.assertEqual(bundle.files[0].role, "main")
         # 导出文件
-        self.assertEqual(bundle.files[1].name, "测试.docx")
+        self.assertEqual(bundle.files[1].name, "测试文档.docx")
         self.assertEqual(bundle.files[1].role, "attachment")
         self.assertTrue(bundle.context.get("_needs_conversion"))
 

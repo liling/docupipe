@@ -18,6 +18,17 @@ from docupipe.sources.base import SourceBase
 
 logger = logging.getLogger(__name__)
 
+_DOC_TYPE_EXT = {
+    "word": "docx",
+    "sheet": "xlsx",
+    "slide": "pptx",
+    "doc": "docx",
+    "smartcanvas": "docx",
+    "smartsheet": "xlsx",
+    "mind": "xmind",
+    "flowchart": "pdf",
+}
+
 
 class _TencentDocClient:
     """封装腾讯文档 MCP 调用"""
@@ -58,7 +69,7 @@ class _TencentDocClient:
             return data.get("markdown", data.get("content", ""))
         return str(data)
 
-    def export_file(self, file_id: str) -> tuple[str, str]:
+    def export_file(self, file_id: str) -> str:
         """导出文件，轮询进度直到完成，返回 (file_url, file_name)"""
         # 发起导出
         result = self._call_tool("manage.export_file", {"file_id": file_id})
@@ -82,7 +93,7 @@ class _TencentDocClient:
                 file_name = progress.get("file_name", "")
                 if not file_url:
                     raise RuntimeError(f"导出完成但无下载 URL: {progress}")
-                return file_url, file_name
+                return file_url
 
         raise SkipBundle(f"导出轮询超时: file_id={file_id}")
 
@@ -172,13 +183,14 @@ class TencentSource(SourceBase):
             ))
 
         if self._fetch_mode in ("export", "both"):
-            file_url, file_name = self._client.export_file(file_id)
+            file_url = self._client.export_file(file_id)
             resp = requests.get(file_url, timeout=120)
             resp.raise_for_status()
 
+            ext = _DOC_TYPE_EXT.get(meta.extra.get("doc_type", ""), "docx")
             context["_needs_conversion"] = True
             files.append(FileItem(
-                name=file_name or f"{meta.title}.bin",
+                name=f"{meta.title}.{ext}",
                 content=resp.content,
                 role="main" if self._fetch_mode == "export" else "attachment",
             ))
