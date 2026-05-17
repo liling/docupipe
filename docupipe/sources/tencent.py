@@ -225,6 +225,7 @@ class TencentSource(SourceBase):
             resp.raise_for_status()
 
             ext = _DOC_TYPE_EXT.get(meta.extra.get("doc_type", ""), "docx")
+            context["extension"] = ext
             context["_needs_conversion"] = True
             files.append(FileItem(
                 name=f"{meta.title}.{ext}",
