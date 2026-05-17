@@ -9,6 +9,7 @@ from pathlib import Path
 import requests
 
 from docupipe.models import Bundle, BundleMeta, FileItem, SkipBundle
+from docupipe.utils import guess_mime_type
 
 logger = logging.getLogger(__name__)
 
@@ -176,10 +177,10 @@ class DingtalkSource(SourceBase):
                 path=node.get("_path", ""),
                 hash="",
                 extra={
-                    "contentType": content_type,
+                    "dingtalk_content_type": content_type,
                     "extension": extension,
-                    "updateTime": node.get("updateTime"),
-                    "nodeType": node_type,
+                    "dingtalk_update_time": node.get("updateTime"),
+                    "dingtalk_node_type": node_type,
                     "space_name": self._space_name,
                 },
             ))
@@ -187,7 +188,7 @@ class DingtalkSource(SourceBase):
         return result
 
     def fetch(self, meta: BundleMeta) -> Bundle:
-        content_type = meta.extra.get("contentType", "")
+        content_type = meta.extra.get("dingtalk_content_type", "")
         extension = meta.extra.get("extension", "")
         node_id = meta.id
 
@@ -231,7 +232,7 @@ class DingtalkSource(SourceBase):
                 files=[FileItem(
                     name=filename,
                     content=content,
-                    content_type=extension,
+                    content_type=guess_mime_type(extension),
                     role="main",
                 )],
                 context=context,
