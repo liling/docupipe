@@ -15,3 +15,11 @@ class SourceBase(ABC):
     @abstractmethod
     def fetch(self, meta: BundleMeta) -> Bundle:
         """获取单个文档包的完整内容"""
+
+    def supported_change_detection(self) -> list[str]:
+        """返回支持的变更检测策略，如 ['mtime', 'hash']"""
+        return []
+
+    def delete(self, doc_id: str) -> None:
+        """删除指定文档（可选实现）"""
+        raise NotImplementedError

@@ -61,6 +61,19 @@ def _make_bundle(id: str, title: str, content: str = "hello", path: str = "", **
     )
 
 
+class TestSourceBaseInterface:
+    def test_supported_change_detection_default_empty(self):
+        from docupipe.sources.base import SourceBase
+        # SourceBase 默认不支持任何变更检测
+        assert SourceBase.supported_change_detection is not None
+
+    def test_delete_default_raises(self, tmp_path):
+        from docupipe.sources.base import SourceBase
+        source = FakeSource([])
+        with pytest.raises(NotImplementedError):
+            source.delete("some_id")
+
+
 class TestStateManager:
     def test_save_and_load(self, tmp_path):
         sm = StateManager(tmp_path / "state.json")
