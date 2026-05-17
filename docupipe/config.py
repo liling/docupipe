@@ -9,24 +9,31 @@ from typing import Any
 _ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
-def resolve_env_vars(value: Any) -> Any:
-    """递归替换 ${ENV_VAR} 和 ${ENV_VAR:-default}"""
+def resolve_env_vars(value: Any, variables: dict[str, str] | None = None) -> Any:
+    """递归替换 ${VAR}，优先级：variables dict > 环境变量 > 默认值"""
+    vars_dict = variables or {}
+
+    def _replace(match: re.Match) -> str:
+        expr = match.group(1)
+        if ":-" in expr:
+            var, default = expr.split(":-", 1)
+            var = var.strip()
+            if var in vars_dict:
+                return vars_dict[var]
+            return os.environ.get(var, default)
+        var = expr.strip()
+        if var in vars_dict:
+            return vars_dict[var]
+        val = os.environ.get(var)
+        return val if val is not None else match.group(0)
+
     if isinstance(value, str):
-        return _ENV_PATTERN.sub(_replace_env, value)
+        return _ENV_PATTERN.sub(_replace, value)
     if isinstance(value, dict):
-        return {k: resolve_env_vars(v) for k, v in value.items()}
+        return {k: resolve_env_vars(v, variables) for k, v in value.items()}
     if isinstance(value, list):
-        return [resolve_env_vars(v) for v in value]
+        return [resolve_env_vars(v, variables) for v in value]
     return value
-
-
-def _replace_env(match: re.Match) -> str:
-    expr = match.group(1)
-    if ":-" in expr:
-        var, default = expr.split(":-", 1)
-        return os.environ.get(var.strip(), default)
-    val = os.environ.get(expr.strip())
-    return val if val is not None else match.group(0)
 
 
 def execute_variables_script(raw_config: dict) -> dict[str, str]:

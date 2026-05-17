@@ -628,6 +628,40 @@ class TestEnvInterpolation:
         assert resolve_env_vars(True) is True
         assert resolve_env_vars(None) is None
 
+    def test_resolve_python_vars_override_env(self, monkeypatch):
+        monkeypatch.setenv("MY_KEY", "from_env")
+        from docupipe.config import resolve_env_vars
+        result = resolve_env_vars("${MY_KEY}", variables={"MY_KEY": "from_python"})
+        assert result == "from_python"
+
+    def test_resolve_python_vars_without_env(self):
+        from docupipe.config import resolve_env_vars
+        result = resolve_env_vars("${MY_VAR}", variables={"MY_VAR": "python_value"})
+        assert result == "python_value"
+
+    def test_resolve_python_vars_with_default(self):
+        from docupipe.config import resolve_env_vars
+        result = resolve_env_vars("${MISSING:-fallback}", variables={"MISSING": "from_python"})
+        assert result == "from_python"
+
+    def test_resolve_python_vars_fallback_to_env(self, monkeypatch):
+        monkeypatch.setenv("ENV_ONLY", "env_val")
+        from docupipe.config import resolve_env_vars
+        result = resolve_env_vars("${ENV_ONLY}", variables={"OTHER": "val"})
+        assert result == "env_val"
+
+    def test_resolve_python_vars_in_dict(self):
+        from docupipe.config import resolve_env_vars
+        config = {"key": "${my_var}", "nested": {"k2": "${my_var}/path"}}
+        result = resolve_env_vars(config, variables={"my_var": "hello"})
+        assert result == {"key": "hello", "nested": {"k2": "hello/path"}}
+
+    def test_resolve_no_variables_same_behavior(self, monkeypatch):
+        monkeypatch.setenv("KEY", "val")
+        from docupipe.config import resolve_env_vars
+        assert resolve_env_vars("${KEY}") == "val"
+        assert resolve_env_vars("${MISSING}") == "${MISSING}"
+
 
 class TestExecuteVariablesScript:
     def test_inline_script_returns_dict(self):
