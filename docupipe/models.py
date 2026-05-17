@@ -4,11 +4,41 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
 
+# Bundle context 字段注册表
+#
+# 新增 source/step 时必须先查阅此表，复用已有 key 或按规则添加。
+# 规则：
+#   - 通用字段：snake_case，无前缀
+#   - Source 特有字段：{source}_前缀 + snake_case
+#   - 值类型：extension 是纯扩展名不含点号，content_type 必须是 MIME type
+#
+# Pipeline 注入字段（pipeline.py）：
+#   id              | str  | 文档唯一标识
+#   title           | str  | 文档标题
+#   path            | str  | 文档路径
+#   filename        | str  | 文件名
+#   _source         | str  | 来源名称
+#   hash            | str  | 内容 SHA-256 哈希
+#   _step_progress  | callable | 进度回调（临时，step 执行期间存在）
+#
+# 通用字段（多个 source 共用）：
+#   extension       | str  | 文件扩展名，不含点号 | Source 写入 | ConvertStep 读取
+#   space_name      | str  | 知识库/空间名称      | 钉钉/腾讯写入 | Destination 读取
+#   absolute_path   | str  | 本地文件绝对路径      | LocalDrive 写入 | ResolveAttachmentsStep 读取
+#   image_metadata  | dict | 图片描述 AI 处理结果  | ImageDescriptionStep 写入
+#
+# Source 特有字段：
+#   dingtalk_content_type | str | 钉钉文档类型枚举（ALIDOC/DOCUMENT 等）| DingtalkSource 写入
+#   dingtalk_update_time  | int | 钉钉文档更新时间戳（毫秒）| DingtalkSource 写入 | HindsightDestination 读取
+#   dingtalk_node_type    | str | 钉钉节点类型（folder/doc 等）| DingtalkSource 写入
+#   tencent_doc_type      | str | 腾讯文档类型枚举（document/sheet 等）| TencentSource 写入
+#   tencent_node_type     | str | 腾讯节点类型（wiki_folder/doc 等）| TencentSource 写入
+#   tencent_has_child     | bool | 腾讯节点是否有子节点 | TencentSource 写入
+
+
 class SkipBundle(Exception):
     """Source 发出此异常表示该文档包应跳过"""
     pass
-
-
 
 
 @dataclass
