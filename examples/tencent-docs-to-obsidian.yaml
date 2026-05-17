@@ -34,6 +34,7 @@ converters:
 pipelines:
 
   - name: tencent-docs-to-obsidian
+    mode: incremental
     source:
       tencent:
         space_name: "个人空间"
