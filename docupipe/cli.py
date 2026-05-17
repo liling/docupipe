@@ -100,6 +100,7 @@ def _run_from_config(ctx, config_path, pipeline_name, cli_mode, cli_resume, cli_
 
         steps = _load_steps(pipe_config.get("steps", []), global_config, extension_rules)
         post_steps = _load_steps(pipe_config.get("post_steps", []), global_config, extension_rules)
+        finalize_steps = _load_steps(pipe_config.get("finalize_steps", []), global_config, extension_rules)
 
         pipe_name = pipe_config.get("name", "")
         effective_mode = cli_mode or pipe_config.get("mode", "full")
@@ -113,6 +114,7 @@ def _run_from_config(ctx, config_path, pipeline_name, cli_mode, cli_resume, cli_
                 display=Display(),
                 steps=steps,
                 post_steps=post_steps,
+                finalize_steps=finalize_steps,
                 dest_config=dest_kwargs,
                 state_file=pipe_config.get("state_file"),
                 mode=effective_mode,
