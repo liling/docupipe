@@ -53,6 +53,30 @@ class _TencentDocClient:
                 return await c.call_tool(name, arguments)
         return asyncio.run(_do())
 
+    def list_spaces(self, num: int = 0) -> list[dict]:
+        """列出知识库空间"""
+        result = self._call_tool("query_space_list", {"num": num})
+        data = self._parse_result(result)
+        if isinstance(data, dict):
+            return data.get("spaces", [])
+        return data if isinstance(data, list) else []
+
+    def resolve_space_name(self, name: str) -> str | None:
+        """根据空间名称解析 space_id"""
+        spaces = self.list_spaces()
+        for space in spaces:
+            if space.get("title") == name:
+                space_id = space.get("space_id", "")
+                logger.info("空间名称精确匹配: '%s' → %s", name, space_id)
+                return space_id
+        for space in spaces:
+            if name in space.get("title", ""):
+                space_id = space.get("space_id", "")
+                logger.info("空间名称模糊匹配: '%s' → '%s' (%s)", name, space.get("title"), space_id)
+                return space_id
+        logger.warning("未找到匹配的空间: '%s'", name)
+        return None
+
     def list_nodes(self, space_id: str, parent_id: str | None = None, num: int = 0) -> dict:
         """列出知识空间节点"""
         args: dict = {"space_id": space_id, "num": num}
@@ -103,20 +127,33 @@ class TencentSource(SourceBase):
     def __init__(
         self,
         space_id: str | None = None,
+        space_name: str | None = None,
         parent_id: str | None = None,
         folders: list[str] | None = None,
         include_types: list[str] | None = None,
         fetch_mode: str = "markdown",
         **kwargs,
     ):
-        if not space_id:
-            raise ValueError("必须提供 space_id 参数")
+        if space_name and space_id:
+            logger.warning("同时提供了 space_name 和 space_id，将优先使用 space_name")
+        if not space_name and not space_id:
+            raise ValueError("必须提供 space_name 或 space_id 参数")
 
         token = os.environ.get("TENCENT_DOCS_TOKEN", "")
         if not token:
             raise ValueError("环境变量 TENCENT_DOCS_TOKEN 未设置")
 
-        self._space_id = space_id
+        self._client = _TencentDocClient(token)
+
+        if space_name:
+            resolved_id = self._client.resolve_space_name(space_name)
+            if not resolved_id:
+                raise ValueError(f"无法找到空间: '{space_name}'")
+            self._space_id = resolved_id
+            self._space_name = space_name
+        else:
+            self._space_id = space_id
+            self._space_name = ""
         self._parent_id = parent_id
         self._folders = folders
         self._include_types = set(include_types) if include_types else None
