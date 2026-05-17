@@ -61,6 +61,215 @@ def _make_bundle(id: str, title: str, content: str = "hello", path: str = "", **
     )
 
 
+def _make_meta(id: str, title: str, content: str = "hello", path: str = "",
+                mtime: int | None = None, **extra) -> BundleMeta:
+    return BundleMeta(
+        id=id, title=title, path=path or f"{title}.md",
+        hash=content_hash(content),
+        extra={"mtime": mtime, **extra} if mtime else extra,
+    )
+
+
+class _FakeSourceWithMeta(SourceBase):
+    """支持自定义 list 结果和 mtime 的 FakeSource"""
+    name = "fake"
+
+    def __init__(self, metas: list[BundleMeta] | None = None, bundles: dict[str, Bundle] | None = None, **kwargs):
+        self._metas = metas or []
+        self._bundles = bundles or {}
+
+    def list(self) -> list[BundleMeta]:
+        return self._metas
+
+    def fetch(self, meta: BundleMeta) -> Bundle:
+        if meta.id in self._bundles:
+            return self._bundles[meta.id]
+        return _make_bundle(meta.id, meta.title, path=meta.path)
+
+    def supported_change_detection(self) -> list[str]:
+        return ["mtime", "hash"]
+
+    def delete(self, doc_id: str) -> None:
+        self._metas = [m for m in self._metas if m.id != doc_id]
+
+
+class TestPipelineModes:
+    def test_full_mode_processes_all(self, tmp_path):
+        bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
+        pipeline.run(mode="full")
+        assert len(dest.written) == 2
+        state = pipeline.state.load()
+        assert state["1"]["status"] == "done"
+        assert state["2"]["status"] == "done"
+
+    def test_full_mode_resume_skips_processed(self, tmp_path):
+        bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
+        pipeline.run(mode="full")
+        assert len(dest.written) == 2
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(FakeSource([]), dest2, tmp_path, pipeline_name="test")
+        pipeline2.run(mode="full", resume=True)
+        assert len(dest2.written) == 0
+
+    def test_incremental_only_processes_new(self, tmp_path):
+        metas = [_make_meta("1", "A", "hello"), _make_meta("2", "B", "world")]
+        source = _FakeSourceWithMeta(metas)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
+        pipeline.run(mode="incremental")
+        assert len(dest.written) == 2
+        metas2 = [_make_meta("1", "A", "hello"), _make_meta("2", "B", "world"), _make_meta("3", "C", "new")]
+        source2 = _FakeSourceWithMeta(metas2)
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source2, dest2, tmp_path, pipeline_name="test")
+        pipeline2.run(mode="incremental")
+        assert len(dest2.written) == 1
+        assert dest2.written[0].context["title"] == "C"
+
+    def test_mirror_mtime_skips_unchanged(self, tmp_path):
+        metas = [_make_meta("1", "A", "hello", mtime=1000)]
+        source = _FakeSourceWithMeta(metas)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", change_detection="mtime")
+        pipeline.run(mode="mirror")
+        assert len(dest.written) == 1
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source, dest2, tmp_path, pipeline_name="test", change_detection="mtime")
+        pipeline2.run(mode="mirror")
+        assert len(dest2.written) == 0
+
+    def test_mirror_mtime_reprocesses_changed(self, tmp_path):
+        metas1 = [_make_meta("1", "A", "hello", mtime=1000)]
+        source1 = _FakeSourceWithMeta(metas1)
+        dest = FakeDestination()
+        pipeline = Pipeline(source1, dest, tmp_path, pipeline_name="test", change_detection="mtime")
+        pipeline.run(mode="mirror")
+        assert len(dest.written) == 1
+        metas2 = [_make_meta("1", "A", "hello", mtime=2000)]
+        source2 = _FakeSourceWithMeta(metas2)
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source2, dest2, tmp_path, pipeline_name="test", change_detection="mtime")
+        pipeline2.run(mode="mirror")
+        assert len(dest2.written) == 1
+
+    def test_mirror_hash_skips_unchanged(self, tmp_path):
+        metas = [_make_meta("1", "A", "hello")]
+        source = _FakeSourceWithMeta(metas)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", change_detection="hash")
+        pipeline.run(mode="mirror")
+        assert len(dest.written) == 1
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source, dest2, tmp_path, pipeline_name="test", change_detection="hash")
+        pipeline2.run(mode="mirror")
+        assert len(dest2.written) == 0
+
+    def test_mirror_removes_deleted_from_dest(self, tmp_path):
+        metas1 = [_make_meta("1", "A", "hello"), _make_meta("2", "B", "world")]
+        source1 = _FakeSourceWithMeta(metas1)
+        dest = FakeDestination()
+        pipeline = Pipeline(source1, dest, tmp_path, pipeline_name="test", change_detection="mtime")
+        pipeline.run(mode="mirror")
+        assert len(dest.written) == 2
+        metas2 = [_make_meta("1", "A", "hello")]
+        source2 = _FakeSourceWithMeta(metas2)
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source2, dest2, tmp_path, pipeline_name="test", change_detection="mtime")
+        pipeline2.run(mode="mirror")
+        assert dest2.removed == ["2"]
+
+    def test_mirror_delete_disabled(self, tmp_path):
+        metas1 = [_make_meta("1", "A"), _make_meta("2", "B")]
+        source1 = _FakeSourceWithMeta(metas1)
+        dest = FakeDestination()
+        pipeline = Pipeline(source1, dest, tmp_path, pipeline_name="test", change_detection="mtime", mirror_delete=False)
+        pipeline.run(mode="mirror")
+        metas2 = [_make_meta("1", "A")]
+        source2 = _FakeSourceWithMeta(metas2)
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source2, dest2, tmp_path, pipeline_name="test", change_detection="mtime", mirror_delete=False)
+        pipeline2.run(mode="mirror")
+        assert dest2.removed == []
+
+    def test_mirror_unsupported_change_detection_raises(self, tmp_path):
+        source = FakeSource([])
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", change_detection="mtime")
+        with pytest.raises(ValueError, match="不支持"):
+            pipeline.run(mode="mirror")
+
+    def test_post_steps_executed_after_write(self, tmp_path):
+        from docupipe.post_steps.base import PostStep
+        executed = []
+        class SpyPostStep(PostStep):
+            name = "spy"
+            def process(self, bundle):
+                executed.append(bundle.context["id"])
+                return bundle
+        bundles = [_make_bundle("1", "A")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", post_steps=[SpyPostStep()])
+        pipeline.run(mode="full")
+        assert executed == ["1"]
+
+    def test_post_steps_not_executed_on_skip(self, tmp_path):
+        from docupipe.post_steps.base import PostStep
+        executed = []
+        class SpyPostStep(PostStep):
+            name = "spy"
+            def process(self, bundle):
+                executed.append(bundle.context["id"])
+                return bundle
+        metas = [_make_meta("1", "A", "hello", mtime=1000)]
+        source = _FakeSourceWithMeta(metas)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", change_detection="mtime", post_steps=[SpyPostStep()])
+        pipeline.run(mode="mirror")
+        assert len(executed) == 1
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source, dest2, tmp_path, pipeline_name="test", change_detection="mtime", post_steps=[SpyPostStep()])
+        pipeline2.run(mode="mirror")
+        assert len(executed) == 1
+
+    def test_state_file_named_by_pipeline(self, tmp_path):
+        bundles = [_make_bundle("1", "A")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="my-pipeline")
+        pipeline.run(mode="full")
+        assert (tmp_path / "my-pipeline_state.json").exists()
+
+    def test_state_file_custom_name(self, tmp_path):
+        bundles = [_make_bundle("1", "A")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", state_file="custom.json")
+        pipeline.run(mode="full")
+        assert (tmp_path / "custom.json").exists()
+
+    def test_full_resume_from_interrupted_state(self, tmp_path):
+        bundles = [_make_bundle("1", "A"), _make_bundle("2", "B"), _make_bundle("3", "C")]
+        source = FakeSource(bundles)
+        dest = FakeDestination()
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
+        pipeline.state.mark_done("1", "hash1", "A")
+        pipeline.state.mark_pending([("2", "B", "B", {})])
+        pipeline.state.mark_done("3", "hash3", "C")
+        source2 = FakeSource(bundles)
+        dest2 = FakeDestination()
+        pipeline2 = Pipeline(source2, dest2, tmp_path, pipeline_name="test")
+        pipeline2.run(mode="full", resume=True)
+        assert len(dest2.written) == 1
+        assert dest2.written[0].context["title"] == "B"
+
+
 class TestSourceBaseInterface:
     def test_supported_change_detection_default_empty(self):
         from docupipe.sources.base import SourceBase
@@ -219,7 +428,7 @@ class TestPipeline:
         bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
         source = FakeSource(bundles)
         dest = FakeDestination()
-        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
         pipeline.run()
 
         assert len(dest.written) == 2
@@ -232,46 +441,46 @@ class TestPipeline:
         dest = FakeDestination()
 
         # 先跑一次
-        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
         pipeline.run()
         assert len(dest.written) == 1
 
         # resume 模式下跳过已处理的
         dest2 = FakeDestination()
-        pipeline2 = Pipeline(source, dest2, tmp_path)
-        pipeline2.run(resume=True)
+        pipeline2 = Pipeline(source, dest2, tmp_path, pipeline_name="test")
+        pipeline2.run(mode="full", resume=True)
         assert len(dest2.written) == 0
 
     def test_run_sync_skips_unchanged(self, tmp_path):
-        bundle = _make_bundle("1", "A", content="hello")
-        source = FakeSource([bundle])
+        metas = [_make_meta("1", "A", "hello")]
+        source = _FakeSourceWithMeta(metas)
         dest = FakeDestination()
 
         # 先跑一次，记录 hash
-        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
         pipeline.run()
         assert len(dest.written) == 1
 
         # sync 模式下跳过无变化的
         dest2 = FakeDestination()
-        pipeline2 = Pipeline(source, dest2, tmp_path)
-        pipeline2.run(sync=True)
+        pipeline2 = Pipeline(source, dest2, tmp_path, pipeline_name="test", change_detection="hash")
+        pipeline2.run(mode="mirror", change_detection="hash")
         assert len(dest2.written) == 0
 
     def test_run_sync_removes_missing(self, tmp_path):
         # 第一次：两个文档
-        bundles1 = [_make_bundle("1", "A"), _make_bundle("2", "B")]
-        source1 = FakeSource(bundles1)
+        metas1 = [_make_meta("1", "A", "hello"), _make_meta("2", "B", "world")]
+        source1 = _FakeSourceWithMeta(metas1)
         dest = FakeDestination()
-        pipeline1 = Pipeline(source1, dest, tmp_path)
+        pipeline1 = Pipeline(source1, dest, tmp_path, pipeline_name="test")
         pipeline1.run()
 
         # 第二次：只有一个文档，另一个应该被移除
-        bundles2 = [_make_bundle("1", "A")]
-        source2 = FakeSource(bundles2)
+        metas2 = [_make_meta("1", "A", "hello")]
+        source2 = _FakeSourceWithMeta(metas2)
         dest2 = FakeDestination()
-        pipeline2 = Pipeline(source2, dest2, tmp_path)
-        pipeline2.run(sync=True)
+        pipeline2 = Pipeline(source2, dest2, tmp_path, pipeline_name="test", change_detection="hash")
+        pipeline2.run(mode="mirror", change_detection="hash")
 
         assert dest2.removed == ["2"]
 
@@ -279,7 +488,7 @@ class TestPipeline:
         bundle = _make_bundle("1", "A")
         source = FakeSource([bundle])
         dest = FakeDestination()
-        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
         pipeline.run(dry_run=True)
 
         assert len(dest.written) == 0
@@ -288,19 +497,19 @@ class TestPipeline:
 
     def test_dry_run_sync_no_state_mutation(self, tmp_path):
         """dry_run + sync 不应修改状态，连续执行结果一致"""
-        bundle = _make_bundle("1", "A")
-        source = FakeSource([bundle])
+        metas = [_make_meta("1", "A", "hello")]
+        source = _FakeSourceWithMeta(metas)
         dest = FakeDestination()
-        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", change_detection="hash")
 
         # 第一次 dry_run
-        pipeline.run(sync=True, dry_run=True)
+        pipeline.run(mode="mirror", change_detection="hash", dry_run=True)
         assert len(dest.written) == 0
         assert len(dest.removed) == 0
         assert pipeline.state.load() == {}
 
         # 第二次 dry_run —— 应该和第一次行为一致
-        pipeline.run(sync=True, dry_run=True)
+        pipeline.run(mode="mirror", change_detection="hash", dry_run=True)
         assert len(dest.written) == 0
         assert len(dest.removed) == 0
         assert pipeline.state.load() == {}
@@ -310,14 +519,14 @@ class TestPipeline:
         bundles = [_make_bundle("1", "A"), _make_bundle("2", "B")]
         source = FakeSource(bundles)
         dest = FakeDestination()
-        pipeline = Pipeline(source, dest, tmp_path)
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test")
 
-        pipeline.run(resume=True, dry_run=True)
+        pipeline.run(mode="full", resume=True, dry_run=True)
         assert len(dest.written) == 0
         assert pipeline.state.load() == {}
 
         # 第二次 resume=True，因为状态未被 dry_run 写入，仍应处理全部文档
-        pipeline.run(resume=True, dry_run=True)
+        pipeline.run(mode="full", resume=True, dry_run=True)
         assert len(dest.written) == 0
         assert pipeline.state.load() == {}
 
@@ -335,7 +544,7 @@ class TestPipeline:
                 bundle.main.content = bundle.main.content.upper()
                 return bundle
 
-        pipeline = Pipeline(source, dest, tmp_path, steps=[UpperStep()])
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", steps=[UpperStep()])
         pipeline.run()
         assert len(dest.written) == 1
         assert dest.written[0].main.content == "HELLO"
@@ -345,7 +554,7 @@ class TestPipeline:
         bundles = [_make_bundle("1", "A")]
         source = FakeSource(bundles)
         dest = FakeDestination()
-        pipeline = Pipeline(source, dest, tmp_path, steps=[])
+        pipeline = Pipeline(source, dest, tmp_path, pipeline_name="test", steps=[])
         pipeline.run()
         assert len(dest.written) == 1
 
