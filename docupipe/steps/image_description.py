@@ -5,13 +5,13 @@ import logging
 from docupipe.image import ImagePostProcessor, OpenAIVisionClient
 from docupipe.models import Bundle, FileItem
 from docupipe.steps import register_step
-from docupipe.steps.base import PipelineStep
+from docupipe.steps.base import Step
 
 logger = logging.getLogger(__name__)
 
 
 @register_step("image_description")
-class ImageDescriptionStep(PipelineStep):
+class ImageDescriptionStep(Step):
     def __init__(self, api_key: str = "", base_url: str = "", model: str = "gpt-4o",
                  concurrency: int = 1, **kwargs):
         vision_client = OpenAIVisionClient(api_key=api_key, base_url=base_url, model=model)

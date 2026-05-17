@@ -536,9 +536,9 @@ class TestPipeline:
         source = FakeSource(bundles)
         dest = FakeDestination()
 
-        from docupipe.steps.base import PipelineStep
+        from docupipe.steps.base import Step
 
-        class UpperStep(PipelineStep):
+        class UpperStep(Step):
             name = "upper"
             def process(self, bundle):
                 bundle.main.content = bundle.main.content.upper()

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from docupipe.models import Bundle, FileItem
 from docupipe.steps import register_step
-from docupipe.steps.base import PipelineStep
+from docupipe.steps.base import Step
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def _replace_extension(name: str, new_ext: str) -> str:
 
 
 @register_step("convert")
-class ConvertStep(PipelineStep):
+class ConvertStep(Step):
     def __init__(self, extension_rules: dict[str, str] | None = None, **kwargs):
         self._extension_rules = extension_rules or {}
 

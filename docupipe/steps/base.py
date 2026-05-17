@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from docupipe.models import Bundle
 
 
-class PipelineStep(ABC):
+class Step(ABC):
     name: str = ""
 
     @abstractmethod

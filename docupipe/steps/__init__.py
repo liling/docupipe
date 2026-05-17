@@ -3,20 +3,20 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from docupipe.steps.base import PipelineStep
+    from docupipe.steps.base import Step
 
-STEPS: dict[str, type[PipelineStep]] = {}
+STEPS: dict[str, type[Step]] = {}
 
 
 def register_step(name: str):
-    def decorator(cls: type[PipelineStep]):
+    def decorator(cls: type[Step]):
         STEPS[name] = cls
         cls.name = name
         return cls
     return decorator
 
 
-def get_step(name: str) -> type[PipelineStep]:
+def get_step(name: str) -> type[Step]:
     if name not in STEPS:
         raise ValueError(f"未知的 step: {name}，可选: {', '.join(STEPS.keys())}")
     return STEPS[name]

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from docupipe.models import Bundle, FileItem
 from docupipe.steps import register_step
-from docupipe.steps.base import PipelineStep
+from docupipe.steps.base import Step
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def _read_file(path: Path) -> tuple[str | bytes, str]:
 
 
 @register_step("resolve_attachments")
-class ResolveAttachmentsStep(PipelineStep):
+class ResolveAttachmentsStep(Step):
     def __init__(self, **kwargs):
         pass
 

@@ -10,13 +10,13 @@ from botocore.config import Config as BotoConfig
 
 from docupipe.models import Bundle
 from docupipe.steps import register_step
-from docupipe.steps.base import PipelineStep
+from docupipe.steps.base import Step
 
 logger = logging.getLogger(__name__)
 
 
 @register_step("s3_upload")
-class S3UploadStep(PipelineStep):
+class S3UploadStep(Step):
     def __init__(
         self,
         endpoint_url: str = "http://localhost:9000",
