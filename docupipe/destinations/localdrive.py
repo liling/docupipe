@@ -97,7 +97,7 @@ class LocalDriveDestination(DestinationBase):
             else:
                 rel_path = rel_path + ext
 
-        return self._output_dir / rel_path
+        return Path(self._output_dir) / rel_path
 
     def _write_sidecar(self, file_path: Path, bundle: Bundle) -> None:
         """写入元数据 sidecar 文件"""
