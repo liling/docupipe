@@ -629,6 +629,82 @@ class TestEnvInterpolation:
         assert resolve_env_vars(None) is None
 
 
+class TestExecuteVariablesScript:
+    def test_inline_script_returns_dict(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "return {'today': '2026-01-01'}"}}
+        result = execute_variables_script(raw)
+        assert result == {"today": "2026-01-01"}
+
+    def test_inline_script_with_import(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "import datetime\nreturn {'day': datetime.date(2026, 1, 1).isoformat()}"}}
+        result = execute_variables_script(raw)
+        assert result == {"day": "2026-01-01"}
+
+    def test_script_file_reads_external_file(self, tmp_path):
+        from docupipe.config import execute_variables_script
+        script = tmp_path / "vars.py"
+        script.write_text("return {'key': 'from_file'}\n", encoding="utf-8")
+        raw = {"variables": {"script_file": str(script)}}
+        result = execute_variables_script(raw)
+        assert result == {"key": "from_file"}
+
+    def test_script_file_not_found_raises(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script_file": "/nonexistent/vars.py"}}
+        with pytest.raises(FileNotFoundError, match="script_file"):
+            execute_variables_script(raw)
+
+    def test_returns_non_dict_raises(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "return 'not a dict'"}}
+        with pytest.raises(TypeError, match="dict"):
+            execute_variables_script(raw)
+
+    def test_non_string_key_raises(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "return {1: 'value'}"}}
+        with pytest.raises(TypeError, match="key.*字符串"):
+            execute_variables_script(raw)
+
+    def test_value_converted_to_string(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "return {'num': 42, 'flag': True}"}}
+        result = execute_variables_script(raw)
+        assert result == {"num": "42", "flag": "True"}
+
+    def test_empty_dict_returns_empty(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "return {}"}}
+        result = execute_variables_script(raw)
+        assert result == {}
+
+    def test_no_variables_block_returns_empty(self):
+        from docupipe.config import execute_variables_script
+        assert execute_variables_script({}) == {}
+        assert execute_variables_script({"pipelines": []}) == {}
+
+    def test_no_script_or_file_returns_empty(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {}}
+        assert execute_variables_script(raw) == {}
+
+    def test_both_script_and_file_prefers_file(self, tmp_path):
+        from docupipe.config import execute_variables_script
+        script = tmp_path / "vars.py"
+        script.write_text("return {'source': 'file'}\n", encoding="utf-8")
+        raw = {"variables": {"script": "return {'source': 'inline'}", "script_file": str(script)}}
+        result = execute_variables_script(raw)
+        assert result == {"source": "file"}
+
+    def test_script_exception_propagates(self):
+        from docupipe.config import execute_variables_script
+        raw = {"variables": {"script": "raise ValueError('boom')"}}
+        with pytest.raises(ValueError, match="boom"):
+            execute_variables_script(raw)
+
+
 class TestDeepMerge:
     def test_simple_override(self):
         from docupipe.config import deep_merge

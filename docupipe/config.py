@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 _ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
@@ -25,6 +27,49 @@ def _replace_env(match: re.Match) -> str:
         return os.environ.get(var.strip(), default)
     val = os.environ.get(expr.strip())
     return val if val is not None else match.group(0)
+
+
+def execute_variables_script(raw_config: dict) -> dict[str, str]:
+    """执行配置中的 variables 脚本，返回变量字典。"""
+    vars_block = raw_config.get("variables")
+    if not vars_block:
+        return {}
+
+    script_file = vars_block.get("script_file")
+    script_inline = vars_block.get("script")
+
+    if script_file and script_inline:
+        logging.getLogger(__name__).warning("variables 同时指定了 script 和 script_file，使用 script_file")
+
+    if script_file:
+        path = Path(script_file)
+        if not path.is_file():
+            raise FileNotFoundError(f"variables script_file 不存在: {script_file}")
+        source = path.read_text(encoding="utf-8")
+    elif script_inline:
+        source = script_inline
+    else:
+        return {}
+
+    func_lines = ["def _vars_func():"]
+    for line in source.splitlines():
+        func_lines.append("    " + line if line.strip() else "")
+    func_source = "\n".join(func_lines)
+
+    namespace: dict = {}
+    exec(func_source, namespace)
+    result = namespace["_vars_func"]()
+
+    if not isinstance(result, dict):
+        raise TypeError(f"variables 脚本必须返回 dict，实际返回了 {type(result).__name__}")
+
+    variables: dict[str, str] = {}
+    for k, v in result.items():
+        if not isinstance(k, str):
+            raise TypeError(f"variables 脚本返回的 key 必须是字符串，实际为 {type(k).__name__}: {k}")
+        variables[k] = str(v)
+
+    return variables
 
 
 def deep_merge(base: dict, override: dict) -> dict:
