@@ -1,6 +1,6 @@
 # docupipe
 
-A universal document transfer pipeline tool that retrieves content from various document sources, processes it through configurable steps, and transfers it to multiple destination systems.
+A universal document transfer and processing tool that retrieves content from various document sources, processes it through configurable steps, and transfers it to multiple destination systems. Inspired by KETTLE, it treats documents and their attachments as an atomic Bundle that flows through the pipeline and is processed incrementally.
 
 ## Why docupipe?
 
@@ -105,13 +105,14 @@ cat output/hello.md
 python -m docupipe run [OPTIONS]
 
 Options:
-  --config PATH              Configuration file path (default: docupipe.yaml)
-  --pipeline NAME            Specify pipeline name
-  --resume                   Skip already processed documents
-  --sync                     Sync only changed documents
-  --dry-run                  Print only, don't execute
-  --state-dir PATH           State file directory (default: ./.state)
-  --log-level LEVEL          Log level (DEBUG/INFO/WARNING/ERROR)
+  --config PATH                 Configuration file path (default: docupipe.yaml)
+  --pipeline NAME               Specify pipeline name
+  --resume                      Full mode resume from checkpoint
+  --mode MODE                   Run mode (full/incremental/mirror)
+  --change-detection STRATEGY   Change detection strategy (mtime/hash)
+  --dry-run                     Print only, don't execute
+  --state-dir PATH              State file directory (default: ./.state)
+  --log-level LEVEL             Log level (DEBUG/INFO/WARNING/ERROR)
 
 # List available components
 python -m docupipe sources       # List all Sources
@@ -298,9 +299,10 @@ docupipe maintains state files (`{source}_{dest}_state.json`) for each source-de
 
 ### Run Modes
 
-- **Default mode**: Process all documents
-- **--resume**: Skip already processed documents
-- **--sync**: Sync only changed documents, remove documents deleted from source
+- **Default mode (full)**: Process all documents
+- **--resume**: Skip already processed documents, continue from pending
+- **incremental**: Only process newly added documents
+- **mirror**: Detect changes (mtime/hash) + remove deleted documents
 
 ## Architecture
 
@@ -350,6 +352,17 @@ class CustomSource(BaseSource):
         # Implement document fetch logic
         pass
 ```
+
+## Documentation
+
+See [docs/](docs/index.md) for detailed documentation:
+
+| Type | Document |
+|------|----------|
+| 📖 Tutorial | [Quick Start](docs/tutorial-quick-start.md) — DingTalk to Hindsight Memory |
+| 📋 How-to | [Configure Pipeline](docs/howto-configure.md), [Add New Component](docs/howto-add-component.md) |
+| 📚 Reference | [Configuration](docs/reference-configuration.md), [API Reference](docs/reference-api.md), [Components](docs/reference-components.md) |
+| 💡 Explanation | [Architecture](docs/explanation-architecture.md), [Run Modes](docs/explanation-modes.md) |
 
 ## Dependencies
 
