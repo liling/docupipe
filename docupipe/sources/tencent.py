@@ -122,6 +122,14 @@ class _TencentDocClient:
 
         raise SkipBundle(f"导出轮询超时: file_id={file_id}")
 
+    def delete_node(self, space_id: str, node_id: str, remove_type: str = "current") -> None:
+        """删除空间节点"""
+        self._call_tool("delete_space_node", {
+            "space_id": space_id,
+            "node_id": node_id,
+            "remove_type": remove_type,
+        })
+
 
 @register_source("tencent")
 class TencentSource(SourceBase):
@@ -208,8 +216,7 @@ class TencentSource(SourceBase):
     def fetch(self, meta: BundleMeta) -> Bundle:
         file_id = meta.id
         context = dict(meta.extra)
-
-        logger.info("获取文档: id=%s, title=%s, mode=%s", meta.id, meta.title, self._fetch_mode)
+        context["space_id"] = self._space_id
 
         files: list[FileItem] = []
 
