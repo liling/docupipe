@@ -224,9 +224,12 @@ class Pipeline:
             changed = False
             if change_detection == "mtime":
                 mtime = meta.extra.get("mtime")
-                if mtime is not None and not self.state.is_mtime_unchanged(meta.id, mtime):
+                if mtime is None:
+                    logger.warning("文档缺少 mtime，降级为重新处理: %s", meta.path)
                     changed = True
-                elif mtime is not None:
+                elif not self.state.is_mtime_unchanged(meta.id, mtime):
+                    changed = True
+                else:
                     self._display.result("skip", f"{meta.path} (mtime 无变化)")
             elif change_detection == "hash":
                 changed = True
