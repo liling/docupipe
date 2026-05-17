@@ -18,9 +18,12 @@ python -m pytest tests/ -v
 python -m pytest tests/test_pipeline.py -v
 
 # 运行 CLI（必须通过 YAML 配置文件启动）
-python -m docupipe run                         # 默认读取 docupipe.yaml
-python -m docupipe run --config other.yaml     # 指定配置文件
-python -m docupipe run --pipeline wiki-to-hs   # 指定 pipeline 名称
+python -m docupipe run                                   # 默认 full 模式
+python -m docupipe run --config other.yaml               # 指定配置文件
+python -m docupipe run --pipeline wiki-to-hs              # 指定 pipeline 名称
+python -m docupipe run --mode incremental                 # 只处理新增
+python -m docupipe run --mode mirror --change-detection mtime  # 增量同步
+python -m docupipe run --resume                           # full 模式断点续传
 ```
 
 ## 架构
@@ -39,26 +42,32 @@ python -m docupipe run --pipeline wiki-to-hs   # 指定 pipeline 名称
 ## 数据流
 
 ```
-source.list_documents() → [DocumentMeta]
-  → 过滤（resume 跳过已处理 / sync 仅同步变更）
-    → source.fetch(meta) → Document
-      → steps 依次处理（convert → image_description → ...）
-        → dest.write(doc)
-          → state.mark_done()
+模式：
+  full:        source.list() → 全部处理 → 写状态
+  full --resume: 不调 list()，从状态找 pending 继续
+  incremental: source.list() → 只处理新增 → 写状态
+  mirror:      source.list() → 变更检测(mtime/hash) → 处理变更 + 清理删除
+
+单文档处理流程：
+  source.fetch(meta) → Bundle
+    → steps 依次处理（convert → image_description → ...）
+      → dest.write(bundle)
+        → state.mark_done()
+          → post_steps（可选，如删除源头）
 ```
 
 ## 配置系统
 
 仅支持 YAML 配置文件方式启动（`--config` 默认值 `docupipe.yaml`）。
 
-配置结构：全局默认值 + `pipelines` 列表。每个 pipeline 定义 `source`、`destination`、`steps`。
+配置结构：全局默认值 + `pipelines` 列表。每个 pipeline 定义 `source`、`destination`、`steps`、`mode`、`change_detection`、`post_steps`。
 支持环境变量插值：`${VAR}` 和 `${VAR:-default}`。
 组件配置自动与全局默认值 deep merge（pipeline 级覆盖全局级）。
 
 ## 状态管理
 
 `StateManager` 为每个 source-dest 组合维护 JSON 状态文件（`{source}_{dest}_state.json`），记录已处理文档 ID 和 hash。
-`--resume` 跳过已处理，`--sync` 仅同步变更并移除源中已删除的文档。
+各运行模式通过状态文件实现跳过已处理、增量处理和变更清理等功能。
 
 ## 技术栈
 
