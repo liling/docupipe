@@ -144,10 +144,9 @@ class TencentSource(SourceBase):
         if not token:
             raise ValueError("环境变量 TENCENT_DOCS_TOKEN 未设置")
 
-        self._client = _TencentDocClient(token)
-
         if space_name:
-            resolved_id = self._client.resolve_space_name(space_name)
+            client = _TencentDocClient(token)
+            resolved_id = client.resolve_space_name(space_name)
             if not resolved_id:
                 raise ValueError(f"无法找到空间: '{space_name}'")
             self._space_id = resolved_id
