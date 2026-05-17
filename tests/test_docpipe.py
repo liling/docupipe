@@ -853,6 +853,27 @@ class TestParseComponentConfig:
             parse_component_config({}, {}, "source")
 
 
+class TestUpdateConfig:
+    def test_destination_update_config(self):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir="/old")
+        dest.update_config({"output_dir": "/new"})
+        assert str(dest._output_dir) == "/new"
+
+    def test_update_config_skips_unknown_keys(self):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir="/old")
+        dest.update_config({"output_dir": "/new", "unknown_key": "value"})
+        assert str(dest._output_dir) == "/new"
+        assert not hasattr(dest, "_unknown_key")
+
+    def test_update_config_no_attr_noop(self):
+        from docupipe.destinations.localdrive import LocalDriveDestination
+        dest = LocalDriveDestination(output_dir="/old")
+        dest.update_config({"nonexistent": "value"})
+        assert str(dest._output_dir) == "/old"
+
+
 class TestStepRegistry:
     def test_convert_step_registered(self):
         from docupipe.steps import STEPS
