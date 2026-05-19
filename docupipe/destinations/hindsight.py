@@ -91,9 +91,12 @@ class HindsightDestination(DestinationBase):
         else:
             timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")
 
-        # document_id 前缀
-        source_name = bundle_context.get("_source", "local")
-        document_id = f"{source_name}:{bundle_context['id']}"
+        # document_id
+        if self._document_id_template:
+            document_id = self._document_id_template
+        else:
+            source_name = bundle_context.get("_source", "local")
+            document_id = f"{source_name}:{bundle_context['id']}"
 
         return {
             "content": content,

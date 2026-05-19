@@ -1490,3 +1490,36 @@ class TestCLIConfig:
         path.write_text(yaml.dump(config), encoding="utf-8")
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         assert raw["pipelines"][0]["state_file"] == "custom_state.json"
+
+
+class TestHindsightDocumentIdTemplate:
+    def _make_dest(self, template=None):
+        from docupipe.destinations.hindsight import HindsightDestination
+        kwargs = {"bank_id": "test", "api_url": "http://localhost", "api_key": "k"}
+        if template:
+            kwargs["document_id_template"] = template
+        return HindsightDestination(**kwargs)
+
+    def _make_bundle(self, **extra):
+        from docupipe.models import Bundle, FileItem
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx.update(extra)
+        return Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context=ctx,
+        )
+
+    def test_default_document_id(self):
+        dest = self._make_dest()
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["document_id"] == "dingtalk:doc1"
+
+    def test_template_document_id(self):
+        dest = self._make_dest(template="${context.space_name}/${context.id}")
+        # 模拟 pipeline 的 resolve_context_vars → update_config 流程
+        from docupipe.config import resolve_context_vars
+        config = {"document_id_template": "${context.space_name}/${context.id}"}
+        resolved = resolve_context_vars(config, {"space_name": "myspace", "id": "doc1"})
+        dest.update_config(resolved)
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["document_id"] == "myspace/doc1"
