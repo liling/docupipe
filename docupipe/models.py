@@ -29,6 +29,7 @@ from pathlib import PurePosixPath
 #
 # Source 特有字段：
 #   dingtalk_content_type | str | 钉钉文档类型枚举（ALIDOC/DOCUMENT 等）| DingtalkSource 写入
+#   dingtalk_extension    | str | 钉钉原始扩展名（内容转换前）| DingtalkSource 写入
 #   dingtalk_update_time  | int | 钉钉文档更新时间戳（毫秒）| DingtalkSource 写入 | HindsightDestination 读取
 #   dingtalk_node_type    | str | 钉钉节点类型（folder/doc 等）| DingtalkSource 写入
 #   tencent_doc_type      | str | 腾讯文档类型枚举（document/sheet 等）| TencentSource 写入

@@ -663,7 +663,7 @@ class TestLocalDriveDestination:
                 "hash": "abc123",
                 "space_name": "知识库A",
                 "dingtalk_content_type": "ALIDOC",
-                "extension": "adoc",
+                "extension": "md",
             },
         )
 

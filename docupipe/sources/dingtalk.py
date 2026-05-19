@@ -181,6 +181,7 @@ class DingtalkSource(SourceBase):
                 extra={
                     "dingtalk_content_type": content_type,
                     "extension": extension,
+                    "dingtalk_extension": extension,
                     "dingtalk_update_time": node.get("updateTime"),
                     "dingtalk_node_type": node_type,
                     "space_name": self._space_name,
@@ -212,6 +213,8 @@ class DingtalkSource(SourceBase):
 
             markdown = self._client.read_document(node_id)
             markdown = self._clean_html_tags(markdown)
+
+            context["extension"] = "md"
 
             return Bundle(
                 files=[FileItem(

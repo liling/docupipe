@@ -222,6 +222,7 @@ class TencentSource(SourceBase):
 
         if self._fetch_mode in ("markdown", "both"):
             markdown = self._client.get_content(file_id)
+            context["extension"] = "md"
             files.append(FileItem(
                 name=f"{meta.title}.md",
                 content=markdown,

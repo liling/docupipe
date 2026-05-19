@@ -80,6 +80,7 @@ class ConvertStep(Step):
             main.content = markdown
             main.content_type = "text/markdown"
             main.name = _replace_extension(main.name, ".md")
+            bundle.context["extension"] = "md"
         finally:
             temp_path.unlink(missing_ok=True)
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from docupipe.destinations import register_destination
 from docupipe.destinations.base import DestinationBase
 from docupipe.models import Bundle
+from docupipe.utils import mime_type_to_extension
 
 
 @register_destination("localdrive")
@@ -83,12 +84,12 @@ class LocalDriveDestination(DestinationBase):
         context = bundle.context
         rel_path = self._path_template or context["path"]
 
-        # 追加或替换扩展名
-        main_file = bundle.main
-        if main_file:
-            ext = self._content_type_to_ext(main_file.content_type)
-        else:
-            ext = ""
+        ext = ""
+        ctx_ext = context.get("extension")
+        if ctx_ext:
+            ext = f".{ctx_ext}"
+        elif bundle.main:
+            ext = self._content_type_to_ext(bundle.main.content_type)
         if ext and not rel_path.endswith(ext):
             if self._replace_extension:
                 stem = Path(rel_path).stem
@@ -108,6 +109,7 @@ class LocalDriveDestination(DestinationBase):
             "title": context["title"],
             "content_type": context.get("dingtalk_content_type", ""),
             "extension": context.get("extension", ""),
+            "dingtalk_extension": context.get("dingtalk_extension", ""),
             "space_name": space_name,
             "relative_path": context["path"],
             "full_path": context["path"],
@@ -134,6 +136,10 @@ class LocalDriveDestination(DestinationBase):
         if mapped:
             return mapped
         if content_type:
+            # 利用 MIME type 反向查扩展名（如 application/vnd.openxmlformats-officedocument.presentationml.presentation → .pptx）
+            known_ext = mime_type_to_extension(content_type)
+            if known_ext:
+                return f".{known_ext}"
             # 如果是 "/" 分隔的内容类型，取最后一部分
             if "/" in content_type:
                 ext = content_type.split("/")[-1]

@@ -108,7 +108,7 @@ pipelines:
   - name: stage3-upload
     source:
       localdrive:
-        input_dir: ./output/markdown/平台产品知识库/产品规划物料/解决方案
+        input_dir: ./output/markdown/产品规划物料/解决方案
         include: ["*.md"]
     destination:
       hindsight:

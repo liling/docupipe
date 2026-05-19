@@ -30,7 +30,17 @@ _MIME_MAP = {
 }
 
 
+_REVERSE_MIME_MAP = {v: k for k, v in _MIME_MAP.items()}
+
+
 def guess_mime_type(extension: str, default: str = "application/octet-stream") -> str:
     if not extension:
         return ""
     return _MIME_MAP.get(extension.lower(), default)
+
+
+def mime_type_to_extension(mime_type: str) -> str | None:
+    """从 MIME type 反查文件扩展名（不含点号）"""
+    if not mime_type:
+        return None
+    return _REVERSE_MIME_MAP.get(mime_type)
