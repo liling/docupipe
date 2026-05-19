@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from docupipe.models import Bundle, BundleMeta, FileItem
@@ -55,17 +56,33 @@ class LocalDriveSource(SourceBase):
 
             file_hash = hashlib.sha256(f.read_bytes()).hexdigest()
             ext = f.suffix.lstrip(".")
+            extra = {
+                "extension": ext,
+                "absolute_path": str(f),
+                "size": f.stat().st_size,
+                "mtime": int(f.stat().st_mtime * 1000),
+            }
+
+            doc_id = file_hash
+            sidecar_path = Path(str(f) + ".json")
+            if sidecar_path.exists():
+                try:
+                    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                    if sidecar.get("id"):
+                        doc_id = sidecar["id"]
+                    for k in ("title", "content_type", "extension", "dingtalk_extension",
+                              "space_name", "relative_path", "full_path"):
+                        if k in sidecar:
+                            extra[k] = sidecar[k]
+                except (json.JSONDecodeError, OSError):
+                    pass
+
             result.append(BundleMeta(
-                id=file_hash,
+                id=doc_id,
                 title=f.stem,
                 path=rel_str,
                 hash=file_hash,
-                extra={
-                    "extension": ext,
-                    "absolute_path": str(f),
-                    "size": f.stat().st_size,
-                    "mtime": int(f.stat().st_mtime * 1000),
-                },
+                extra=extra,
             ))
         return result
 

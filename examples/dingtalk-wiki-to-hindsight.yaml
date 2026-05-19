@@ -99,7 +99,7 @@ pipelines:
       localdrive:
         output_dir: ./output/markdown
         replace_extension: true
-        save_sidecar: false
+        save_sidecar: true
     steps:
       - convert
       # - image_description
