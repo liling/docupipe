@@ -42,7 +42,7 @@ pipeline.run(mode=None, resume=False, change_detection=None, dry_run=False)
 状态管理，以 JSON 文件持久化文档处理状态。
 
 ```python
-from docupipe.pipeline import StateManager
+from docupipe.state import StateManager
 
 sm = StateManager(path)  # path: Path — 状态文件路径
 ```
@@ -84,7 +84,7 @@ sm = StateManager(path)  # path: Path — 状态文件路径
 ### 工具函数
 
 ```python
-from docupipe.pipeline import content_hash, bundle_hash
+from docupipe.state import content_hash, bundle_hash
 
 content_hash(content: str | bytes) -> str   # SHA-256 十六进制字符串
 bundle_hash(bundle: Bundle) -> str           # 取 Bundle.main.content 的 hash

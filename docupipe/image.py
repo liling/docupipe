@@ -6,12 +6,12 @@ import io
 import json
 import logging
 import re
+import time
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 import requests as req
-
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI, RateLimitError
 
 if TYPE_CHECKING:
     from docupipe.models import FileItem
@@ -29,73 +29,90 @@ class OpenAIVisionClient:
         base_url: str,
         model: str = "gpt-4o",
         timeout: int = 30,
+        max_retries: int = 3,
     ):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model = model
         self.timeout = timeout
+        self.max_retries = max_retries
+
+    def _make_prompt(self, image_bytes: bytes, context: str) -> tuple[str, list]:
+        b64 = base64.b64encode(image_bytes).decode("utf-8")
+        prompt = (
+            f"这是一篇文档《{context}》中的图片。\n\n"
+            "请完成两个任务：\n"
+            "1. 生成一个简短的英文文件名（3-5个单词，用连字符连接，如 \"system-architecture-diagram\"）\n"
+            "2. 用一句话描述图片内容（中文，适合在文档中作为图片说明）\n\n"
+            '请以 JSON 格式返回：\n{"filename": "...", "description": "..."}'
+        )
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    },
+                ],
+            }
+        ]
+        return prompt, messages
 
     def describe(self, image_bytes: bytes, context: str) -> tuple[str, str]:
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-        prompt = (
-            f"这是一篇文档《{context}》中的图片。\n\n"
-            "请完成两个任务：\n"
-            "1. 生成一个简短的英文文件名（3-5个单词，用连字符连接，如 \"system-architecture-diagram\"）\n"
-            "2. 用一句话描述图片内容（中文，适合在文档中作为图片说明）\n\n"
-            '请以 JSON 格式返回：\n{"filename": "...", "description": "..."}'
-        )
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{b64}"},
-                        },
-                    ],
-                }
-            ],
-            max_tokens=300,
-            timeout=self.timeout,
-        )
-
-        raw = response.choices[0].message.content
-        return self._parse_response(raw)
+        _, messages = self._make_prompt(image_bytes, context)
+        for attempt in range(self.max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=300,
+                    timeout=self.timeout,
+                )
+                raw = response.choices[0].message.content
+                return self._parse_response(raw)
+            except RateLimitError:
+                if attempt < self.max_retries - 1:
+                    wait = 2 ** (attempt + 1)
+                    logger.warning("API 限流，%.1f 秒后重试 (attempt %d/%d)", wait, attempt + 1, self.max_retries)
+                    time.sleep(wait)
+                else:
+                    raise
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    wait = 2 ** (attempt + 1)
+                    logger.warning("API 调用失败: %s，%.1f 秒后重试", e, wait)
+                    time.sleep(wait)
+                else:
+                    raise
 
     async def a_describe(self, image_bytes: bytes, context: str) -> tuple[str, str]:
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-        prompt = (
-            f"这是一篇文档《{context}》中的图片。\n\n"
-            "请完成两个任务：\n"
-            "1. 生成一个简短的英文文件名（3-5个单词，用连字符连接，如 \"system-architecture-diagram\"）\n"
-            "2. 用一句话描述图片内容（中文，适合在文档中作为图片说明）\n\n"
-            '请以 JSON 格式返回：\n{"filename": "...", "description": "..."}'
-        )
-
-        response = await self.async_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{b64}"},
-                        },
-                    ],
-                }
-            ],
-            max_tokens=300,
-            timeout=self.timeout,
-        )
-
-        raw = response.choices[0].message.content
-        return self._parse_response(raw)
+        _, messages = self._make_prompt(image_bytes, context)
+        for attempt in range(self.max_retries):
+            try:
+                response = await self.async_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=300,
+                    timeout=self.timeout,
+                )
+                raw = response.choices[0].message.content
+                return self._parse_response(raw)
+            except RateLimitError:
+                if attempt < self.max_retries - 1:
+                    wait = 2 ** (attempt + 1)
+                    logger.warning("API 限流，%.1f 秒后重试 (attempt %d/%d)", wait, attempt + 1, self.max_retries)
+                    await asyncio.sleep(wait)
+                else:
+                    raise
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    wait = 2 ** (attempt + 1)
+                    logger.warning("API 调用失败: %s，%.1f 秒后重试", e, wait)
+                    await asyncio.sleep(wait)
+                else:
+                    raise
 
     def _parse_response(self, raw: str) -> tuple[str, str]:
         try:
@@ -229,7 +246,7 @@ class ImagePostProcessor:
         image_bytes_list = [img_bytes for _, _, img_bytes in processable]
         progress_label = f"image_description [{self.concurrency}并发]" if self.concurrency > 1 else "image_description"
         if self.concurrency > 1:
-            results = asyncio.run(self._run_concurrent(image_bytes_list, source_context, progress_callback, total, progress_label))
+            results = self._run_concurrent_sync(image_bytes_list, source_context, progress_callback, total, progress_label)
         else:
             results = self._run_sync(image_bytes_list, source_context, progress_callback, total, progress_label)
 
@@ -299,6 +316,18 @@ class ImagePostProcessor:
             return result
 
         return await asyncio.gather(*[describe_one(b) for b in image_bytes_list])
+
+    def _run_concurrent_sync(self, image_bytes_list: list[bytes], source_context: str,
+                              progress_callback=None, total: int = 0,
+                              label: str = "image_description") -> list[tuple[str | None, str | None]]:
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(
+                self._run_concurrent(image_bytes_list, source_context, progress_callback, total, label)
+            )
+        finally:
+            loop.close()
 
     @staticmethod
     def _decode_data_uri(uri: str) -> bytes:

@@ -9,7 +9,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from docupipe.models import Bundle, BundleMeta, FileItem, SkipBundle
-from docupipe.pipeline import Pipeline, StateManager, content_hash, bundle_hash
+from docupipe.pipeline import Pipeline
+from docupipe.state import StateManager, content_hash, bundle_hash
 from docupipe.sources.base import SourceBase
 from docupipe.destinations.base import DestinationBase
 
@@ -1193,15 +1194,15 @@ class TestParseComponentConfig:
 class TestUpdateConfig:
     def test_destination_update_config(self):
         from docupipe.destinations.localdrive import LocalDriveDestination
-        dest = LocalDriveDestination(output_dir="/old")
-        dest.update_config({"output_dir": "/new"})
-        assert str(dest._output_dir) == "/new"
+        dest = LocalDriveDestination(output_dir="/old", path_template="old/path")
+        dest.update_config({"path_template": "new/path"})
+        assert dest._path_template == "new/path"
 
     def test_update_config_skips_unknown_keys(self):
         from docupipe.destinations.localdrive import LocalDriveDestination
-        dest = LocalDriveDestination(output_dir="/old")
-        dest.update_config({"output_dir": "/new", "unknown_key": "value"})
-        assert str(dest._output_dir) == "/new"
+        dest = LocalDriveDestination(output_dir="/old", path_template="old/path")
+        dest.update_config({"path_template": "new/path", "unknown_key": "value"})
+        assert dest._path_template == "new/path"
         assert not hasattr(dest, "_unknown_key")
 
     def test_update_config_no_attr_noop(self):

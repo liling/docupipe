@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+_CHUNK_SIZE = 64 * 1024
+
 from docupipe.models import Bundle, BundleMeta, FileItem
 from docupipe.sources import register_source
 from docupipe.sources.base import SourceBase
@@ -54,7 +56,7 @@ class LocalDriveSource(SourceBase):
             if not self._matches_filters(rel_str):
                 continue
 
-            file_hash = hashlib.sha256(f.read_bytes()).hexdigest()
+            file_hash = self._file_hash(f)
             ext = f.suffix.lstrip(".")
             extra = {
                 "extension": ext,
@@ -135,3 +137,14 @@ class LocalDriveSource(SourceBase):
     def _glob_matches(path: str, patterns: list[str]) -> bool:
         p = Path(path)
         return any(p.match(pattern) for pattern in patterns)
+
+    @staticmethod
+    def _file_hash(path: Path) -> str:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(_CHUNK_SIZE)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()

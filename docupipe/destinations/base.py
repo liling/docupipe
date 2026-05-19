@@ -8,6 +8,8 @@ from docupipe.models import Bundle
 class DestinationBase(ABC):
     name: str = ""
 
+    _config_keys: set[str] = set()
+
     @abstractmethod
     def write(self, bundle: Bundle) -> str:
         """写入文档包，返回目标系统中的 ID"""
@@ -17,8 +19,7 @@ class DestinationBase(ABC):
         raise NotImplementedError(f"{self.name} 不支持删除操作")
 
     def update_config(self, config: dict) -> None:
-        """用已解析的配置更新组件属性。"""
-        for key, value in config.items():
-            attr = f"_{key}"
-            if hasattr(self, attr):
-                setattr(self, attr, value)
+        """用已解析的配置更新组件属性。只更新 _config_keys 中声明的字段。"""
+        for key in self._config_keys:
+            if key in config:
+                setattr(self, f"_{key}", config[key])

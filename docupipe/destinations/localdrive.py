@@ -11,6 +11,8 @@ from docupipe.utils import mime_type_to_extension
 
 @register_destination("localdrive")
 class LocalDriveDestination(DestinationBase):
+    _config_keys = {"path_template", "replace_extension", "save_sidecar"}
+
     def __init__(self, output_dir: str, replace_extension: bool = False, save_sidecar: bool = True, path_template: str | None = None, **kwargs):
         self._output_dir = Path(output_dir)
         self._replace_extension = replace_extension
