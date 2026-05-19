@@ -1597,3 +1597,48 @@ class TestHindsightExtraTags:
         assert "space:space1" in item["tags"]
         assert "custom:myspace" in item["tags"]
         assert "env:prod" in item["tags"]
+
+
+class TestHindsightExtraMetadata:
+    def _make_dest(self, extra_metadata=None):
+        from docupipe.destinations.hindsight import HindsightDestination
+        kwargs = {"bank_id": "test", "api_url": "http://localhost", "api_key": "k"}
+        if extra_metadata:
+            kwargs["extra_metadata"] = extra_metadata
+        return HindsightDestination(**kwargs)
+
+    def _make_bundle(self, **extra):
+        from docupipe.models import Bundle, FileItem
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx.update(extra)
+        return Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context=ctx,
+        )
+
+    def test_default_metadata(self):
+        dest = self._make_dest()
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["metadata"]["title"] == "测试"
+        assert "author" not in item["metadata"]
+
+    def test_extra_metadata_merged(self):
+        dest = self._make_dest()
+        from docupipe.config import resolve_context_vars
+        config = {"extra_metadata": {"author": "${context.author:-unknown}", "version": "1.0"}}
+        resolved = resolve_context_vars(config, {"author": "张三"})
+        dest.update_config(resolved)
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["metadata"]["title"] == "测试"
+        assert item["metadata"]["author"] == "张三"
+        assert item["metadata"]["version"] == "1.0"
+
+    def test_extra_metadata_overwrites_existing(self):
+        """extra_metadata 的值可以覆盖自动生成的字段"""
+        dest = self._make_dest()
+        from docupipe.config import resolve_context_vars
+        config = {"extra_metadata": {"title": "自定义标题"}}
+        resolved = resolve_context_vars(config, {})
+        dest.update_config(resolved)
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["metadata"]["title"] == "自定义标题"

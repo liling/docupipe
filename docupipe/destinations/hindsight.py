@@ -104,7 +104,7 @@ class HindsightDestination(DestinationBase):
             source_name = bundle_context.get("_source", "local")
             document_id = f"{source_name}:{bundle_context['id']}"
 
-        return {
+        item = {
             "content": content,
             "document_id": document_id,
             "timestamp": timestamp,
@@ -123,3 +123,8 @@ class HindsightDestination(DestinationBase):
                 "update_time": str(update_time) if update_time else "",
             },
         }
+
+        if self._extra_metadata:
+            item["metadata"].update(self._extra_metadata)
+
+        return item
