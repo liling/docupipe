@@ -1523,3 +1523,42 @@ class TestHindsightDocumentIdTemplate:
         dest.update_config(resolved)
         item = dest._build_retain_item(self._make_bundle())
         assert item["document_id"] == "myspace/doc1"
+
+
+class TestHindsightContextTemplate:
+    def _make_dest(self, context_template=None, context_prefix=None):
+        from docupipe.destinations.hindsight import HindsightDestination
+        kwargs = {"bank_id": "test", "api_url": "http://localhost", "api_key": "k"}
+        if context_template:
+            kwargs["context_template"] = context_template
+        if context_prefix:
+            kwargs["context_prefix"] = context_prefix
+        return HindsightDestination(**kwargs)
+
+    def _make_bundle(self, **extra):
+        from docupipe.models import Bundle, FileItem
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx.update(extra)
+        return Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context=ctx,
+        )
+
+    def test_default_context(self):
+        dest = self._make_dest()
+        item = dest._build_retain_item(self._make_bundle())
+        assert "来自" in item["context"]
+
+    def test_context_prefix(self):
+        dest = self._make_dest(context_prefix="产品知识库")
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["context"] == "产品知识库"
+
+    def test_context_template_overrides_prefix(self):
+        dest = self._make_dest(context_template="来自${context.space_name}", context_prefix="产品知识库")
+        from docupipe.config import resolve_context_vars
+        config = {"context_template": "来自${context.space_name}"}
+        resolved = resolve_context_vars(config, {"space_name": "myspace"})
+        dest.update_config(resolved)
+        item = dest._build_retain_item(self._make_bundle())
+        assert item["context"] == "来自myspace"

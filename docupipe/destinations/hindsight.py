@@ -71,7 +71,9 @@ class HindsightDestination(DestinationBase):
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # context
-        if self._context_prefix:
+        if self._context_template:
+            context_str = self._context_template
+        elif self._context_prefix:
             context_str = self._context_prefix
         else:
             folder_display = "/".join(path_parts[1:]) if len(path_parts) > 1 else ""
