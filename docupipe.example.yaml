@@ -63,6 +63,13 @@ pipelines:
     destination:
       hindsight:
         context_prefix: "产品知识库"
+        # 可选高级配置（支持 ${context.xxx} 插值）
+        # document_id_template: "${context.space_name}/${context.path}"
+        # context_template: "来自${context.space_name}的${context.title}"
+        # extra_tags:
+        #   - "custom:${context.space_name}"
+        # extra_metadata:
+        #   author: "${context.author:-unknown}"
     steps: []
 
   # 场景 4：钉钉知识库 → HindSight Memory（ALL IN ONE）
