@@ -11,18 +11,28 @@ from docupipe.models import Bundle
 
 @register_destination("hindsight")
 class HindsightDestination(DestinationBase):
+    _config_keys = {"context_prefix", "document_id_template", "context_template", "extra_tags", "extra_metadata"}
+
     def __init__(
         self,
         bank_id: str | None = None,
         api_url: str | None = None,
         api_key: str | None = None,
         context_prefix: str | None = None,
+        document_id_template: str | None = None,
+        context_template: str | None = None,
+        extra_tags: list | None = None,
+        extra_metadata: dict | None = None,
         **kwargs,
     ):
         self.bank_id = bank_id or os.environ.get("HINDSIGHT_BANK_ID", "")
         self.api_url = api_url or os.environ.get("HINDSIGHT_API_URL", "")
         self.api_key = api_key or os.environ.get("HINDSIGHT_API_KEY", "")
-        self.context_prefix = context_prefix or os.environ.get("HINDSIGHT_CONTEXT", "")
+        self._context_prefix = context_prefix or os.environ.get("HINDSIGHT_CONTEXT", "")
+        self._document_id_template = document_id_template
+        self._context_template = context_template
+        self._extra_tags = extra_tags
+        self._extra_metadata = extra_metadata
         self._client = None
 
     def _get_client(self):
@@ -61,8 +71,8 @@ class HindsightDestination(DestinationBase):
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # context
-        if self.context_prefix:
-            context_str = self.context_prefix
+        if self._context_prefix:
+            context_str = self._context_prefix
         else:
             folder_display = "/".join(path_parts[1:]) if len(path_parts) > 1 else ""
             if folder_display:

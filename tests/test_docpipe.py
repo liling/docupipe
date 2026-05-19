@@ -1211,6 +1211,15 @@ class TestUpdateConfig:
         dest.update_config({"nonexistent": "value"})
         assert str(dest._output_dir) == "/old"
 
+    def test_hindsight_config_keys(self):
+        from docupipe.destinations.hindsight import HindsightDestination
+        dest = HindsightDestination()
+        assert "document_id_template" in dest._config_keys
+        assert "context_template" in dest._config_keys
+        assert "extra_tags" in dest._config_keys
+        assert "extra_metadata" in dest._config_keys
+        assert "context_prefix" in dest._config_keys
+
 
 class TestLocalDrivePathTemplate:
     def test_default_uses_context_path(self, tmp_path):
