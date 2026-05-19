@@ -70,6 +70,10 @@ class HindsightDestination(DestinationBase):
         path_tags = [f"path:{part}" for part in path_parts[1:]]
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
+        # 追加额外标签
+        if self._extra_tags:
+            tags.extend(self._extra_tags)
+
         # context
         if self._context_template:
             context_str = self._context_template

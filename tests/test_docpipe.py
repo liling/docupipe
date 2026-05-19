@@ -1562,3 +1562,38 @@ class TestHindsightContextTemplate:
         dest.update_config(resolved)
         item = dest._build_retain_item(self._make_bundle())
         assert item["context"] == "来自myspace"
+
+
+class TestHindsightExtraTags:
+    def _make_dest(self, extra_tags=None):
+        from docupipe.destinations.hindsight import HindsightDestination
+        kwargs = {"bank_id": "test", "api_url": "http://localhost", "api_key": "k"}
+        if extra_tags:
+            kwargs["extra_tags"] = extra_tags
+        return HindsightDestination(**kwargs)
+
+    def _make_bundle(self, **extra):
+        from docupipe.models import Bundle, FileItem
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx.update(extra)
+        return Bundle(
+            files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
+            context=ctx,
+        )
+
+    def test_default_tags(self):
+        dest = self._make_dest()
+        item = dest._build_retain_item(self._make_bundle())
+        assert "space:space1" in item["tags"]
+        assert "path:folder" in item["tags"]
+
+    def test_extra_tags_appended(self):
+        dest = self._make_dest()
+        from docupipe.config import resolve_context_vars
+        config = {"extra_tags": ["custom:${context.space_name}", "env:prod"]}
+        resolved = resolve_context_vars(config, {"space_name": "myspace"})
+        dest.update_config(resolved)
+        item = dest._build_retain_item(self._make_bundle())
+        assert "space:space1" in item["tags"]
+        assert "custom:myspace" in item["tags"]
+        assert "env:prod" in item["tags"]
