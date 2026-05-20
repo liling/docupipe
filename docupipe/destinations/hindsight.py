@@ -65,9 +65,9 @@ class HindsightDestination(DestinationBase):
         content = main_file.content if isinstance(main_file.content, str) else main_file.content.decode("utf-8")
 
         # 从 path 构建标签
+        space_name = bundle_context.get("space_name", "")
         path_parts = Path(bundle_context["path"]).parts
-        space_name = path_parts[0] if path_parts else ""
-        path_tags = [f"path:{part}" for part in path_parts[1:]]
+        path_tags = [f"path:{part}" for part in path_parts[1:]] if len(path_parts) > 1 else []
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # 追加额外标签

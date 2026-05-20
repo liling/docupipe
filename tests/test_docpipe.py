@@ -1502,7 +1502,7 @@ class TestHindsightDocumentIdTemplate:
 
     def _make_bundle(self, **extra):
         from docupipe.models import Bundle, FileItem
-        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk", "space_name": "space1"}
         ctx.update(extra)
         return Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
@@ -1537,7 +1537,7 @@ class TestHindsightContextTemplate:
 
     def _make_bundle(self, **extra):
         from docupipe.models import Bundle, FileItem
-        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk", "space_name": "space1"}
         ctx.update(extra)
         return Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
@@ -1574,7 +1574,7 @@ class TestHindsightExtraTags:
 
     def _make_bundle(self, **extra):
         from docupipe.models import Bundle, FileItem
-        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk", "space_name": "space1"}
         ctx.update(extra)
         return Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
@@ -1609,7 +1609,7 @@ class TestHindsightExtraMetadata:
 
     def _make_bundle(self, **extra):
         from docupipe.models import Bundle, FileItem
-        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk"}
+        ctx = {"id": "doc1", "title": "测试", "path": "space1/folder/doc", "hash": "abc123", "_source": "dingtalk", "space_name": "space1"}
         ctx.update(extra)
         return Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
