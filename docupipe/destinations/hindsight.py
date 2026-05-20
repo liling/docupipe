@@ -89,7 +89,7 @@ class HindsightDestination(DestinationBase):
                 context_str = f"文档：{bundle_context['title']}"
 
         # timestamp
-        update_time = bundle_context.get("dingtalk_update_time")
+        update_time = bundle_context.get("mtime")
         if update_time:
             tz = timezone(timedelta(hours=8))
             dt = datetime.fromtimestamp(update_time / 1000, tz=tz)
