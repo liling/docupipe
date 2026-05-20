@@ -12,3 +12,4 @@ dist/
 PYPI_RELEASE.md
 .venv/
 .context/
+config/
