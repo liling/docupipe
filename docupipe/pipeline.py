@@ -95,6 +95,7 @@ class Pipeline:
                     step.process(bundle)
                 except Exception as e:
                     logger.error("finalize_step 失败: %s - %s", bundle.context.get("path", ""), e)
+                    self._display.add_failure()
 
     def _run_full(self, dry_run: bool) -> None:
         metas = self.source.list()

@@ -108,6 +108,22 @@ class TestStateManager:
         assert path == "path/a"
         assert fetch_extra == {"ext": "md"}
 
+    def test_is_source_unchanged_with_source_hash(self, tmp_path):
+        sm = StateManager(tmp_path / "state.json")
+        sm.mark_done("doc1", "hash_abc", source_hash="source_abc")
+        assert sm.is_source_unchanged("doc1", "source_abc") is True
+        assert sm.is_source_unchanged("doc1", "source_xyz") is False
+
+    def test_is_source_unchanged_fallback_to_hash(self, tmp_path):
+        sm = StateManager(tmp_path / "state.json")
+        sm.mark_done("doc1", "hash_abc")
+        assert sm.is_source_unchanged("doc1", "hash_abc") is True
+        assert sm.is_source_unchanged("doc1", "hash_xyz") is False
+
+    def test_is_source_unchanged_missing_doc(self, tmp_path):
+        sm = StateManager(tmp_path / "state.json")
+        assert sm.is_source_unchanged("nonexistent", "anything") is False
+
 
 class TestContentHash:
     def test_string_hash(self):
@@ -134,6 +150,19 @@ class TestBundleHash:
     def test_bundle_hash_empty_bundle(self):
         bundle = Bundle(files=[], context={})
         assert bundle_hash(bundle) == ""
+
+    def test_bundle_hash_no_main_fallback(self):
+        bundle = Bundle(
+            files=[
+                FileItem(name="img1.png", content=b"image_data", content_type="image/png", role="image"),
+                FileItem(name="img2.png", content=b"more_data", content_type="image/png", role="image"),
+            ],
+            context={},
+        )
+        h = bundle_hash(bundle)
+        expected_combined = b"image_data".hex() + b"more_data".hex()
+        assert h == hashlib.sha256(expected_combined.encode()).hexdigest()
+        assert h != ""
 
     def test_bundle_hash_bytes_content(self):
         bundle = Bundle(

@@ -19,7 +19,13 @@ def content_hash(content: str | bytes) -> str:
 
 def bundle_hash(bundle: Bundle) -> str:
     if bundle.main is None:
-        return ""
+        if not bundle.files:
+            return ""
+        combined = "".join(
+            str(f.content) if isinstance(f.content, str) else f.content.hex()
+            for f in bundle.files
+        )
+        return content_hash(combined)
     return content_hash(bundle.main.content)
 
 
@@ -100,7 +106,9 @@ class StateManager:
 
     def is_source_unchanged(self, doc_id: str, current_source_hash: str) -> bool:
         entry = self.load().get(doc_id, {})
-        stored = entry.get("source_hash") or entry.get("hash")
+        stored = entry.get("source_hash")
+        if stored is None:
+            stored = entry.get("hash")
         return stored == current_source_hash
 
     def get_path(self, doc_id: str) -> str:

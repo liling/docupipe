@@ -62,27 +62,13 @@ def run(ctx, config_path, pipeline_name, mode, resume, change_detection, dry_run
 
 @main.command("sources")
 def list_sources():
+    """列出可用的 Source"""
     for name in SOURCES:
         click.echo(f"  {name}")
 
 
 @main.command("destinations")
 def list_destinations():
-    for name in DESTINATIONS:
-        click.echo(f"  {name}")
-
-
-@main.command("sources")
-def list_sources():
-    """列出可用的 Source"""
-    from docupipe.sources import SOURCES
-    for name, cls in SOURCES.items():
-        click.echo(f"  {name}")
-
-
-@main.command("destinations")
-def list_destinations():
     """列出可用的 Destination"""
-    from docupipe.destinations import DESTINATIONS
-    for name, cls in DESTINATIONS.items():
+    for name in DESTINATIONS:
         click.echo(f"  {name}")

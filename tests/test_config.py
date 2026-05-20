@@ -201,6 +201,13 @@ class TestDeepMerge:
     def test_empty_override(self):
         assert deep_merge({"a": 1}, {}) == {"a": 1}
 
+    def test_does_not_mutate_base(self):
+        base = {"api_url": "http://default", "nested": {"a": 1, "b": 2}}
+        override = {"bank_id": "my_bank", "nested": {"b": 3, "c": 4}}
+        result = deep_merge(base, override)
+        assert result == {"api_url": "http://default", "bank_id": "my_bank", "nested": {"a": 1, "b": 3, "c": 4}}
+        assert base == {"api_url": "http://default", "nested": {"a": 1, "b": 2}}
+
 
 class TestParseComponentConfig:
     def test_simple_parse(self):

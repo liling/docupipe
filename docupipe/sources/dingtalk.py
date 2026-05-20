@@ -145,11 +145,12 @@ class DingtalkSource(SourceBase):
         if mode != "wiki":
             raise ValueError(f"不支持的 mode: {mode}，可选值: wiki, doc")
 
-        # wiki 模式：原有逻辑
+        self._client = _WikiClient()
+
         if space and space_id:
             logger.warning("同时提供了 space 和 space_id，将优先使用 space")
         if space:
-            resolved_id = _WikiClient().resolve_space_name(space)
+            resolved_id = self._client.resolve_space_name(space)
             if not resolved_id:
                 raise ValueError(f"无法找到知识库: '{space}'")
             self._space_id = resolved_id
@@ -163,7 +164,6 @@ class DingtalkSource(SourceBase):
         self._folder_id = folder_id
         self._folders = folders
         self._include_types = set(include_types) if include_types else None
-        self._client = _WikiClient()
 
     def supported_change_detection(self) -> list[str]:
         return ["mtime", "hash"]

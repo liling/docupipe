@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import re
@@ -9,12 +10,18 @@ from typing import Any
 _ENV_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
 
+logger = logging.getLogger(__name__)
+
+
 def resolve_env_vars(value: Any, variables: dict[str, str] | None = None) -> Any:
     """递归替换 ${VAR}，优先级：variables dict > 环境变量 > 默认值"""
     vars_dict = variables or {}
 
     def _replace(match: re.Match) -> str:
         expr = match.group(1)
+        # ${context.field} 是上下文模板，由 resolve_context_vars 处理
+        if expr.startswith("context."):
+            return match.group(0)
         if ":-" in expr:
             var, default = expr.split(":-", 1)
             var = var.strip()
@@ -25,7 +32,10 @@ def resolve_env_vars(value: Any, variables: dict[str, str] | None = None) -> Any
         if var in vars_dict:
             return vars_dict[var]
         val = os.environ.get(var)
-        return val if val is not None else match.group(0)
+        if val is None:
+            logger.warning("环境变量未设置: '%s'，将保留原始值", var)
+            return match.group(0)
+        return val
 
     if isinstance(value, str):
         return _ENV_PATTERN.sub(_replace, value)
@@ -103,8 +113,8 @@ def execute_variables_script(raw_config: dict) -> dict[str, str]:
 
 
 def deep_merge(base: dict, override: dict) -> dict:
-    """深度合并两个字典，override 覆盖 base"""
-    result = dict(base)
+    """深度合并两个字典，override 覆盖 base，不修改 base"""
+    result = copy.deepcopy(base)
     for k, v in override.items():
         if k in result and isinstance(result[k], dict) and isinstance(v, dict):
             result[k] = deep_merge(result[k], v)

@@ -94,3 +94,5 @@ def run_pipeline_from_config(
         finally:
             if hasattr(dest, "close"):
                 dest.close()
+            if hasattr(source, "close"):
+                source.close()

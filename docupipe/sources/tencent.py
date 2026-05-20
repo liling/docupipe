@@ -32,7 +32,7 @@ _DOC_TYPE_EXT = {
 
 
 class _TencentDocClient:
-    """封装腾讯文档 MCP 调用"""
+    """封装腾讯文档 MCP 调用，复用长连接"""
 
     MCP_URL = "https://docs.qq.com/openapi/mcp"
 
@@ -41,6 +41,31 @@ class _TencentDocClient:
         from fastmcp.client.auth import BearerAuth
 
         self._client = Client(self.MCP_URL, auth=BearerAuth(token))
+        self._runner: asyncio.Runner | None = None
+        self._connected = False
+
+    def _get_runner(self) -> asyncio.Runner:
+        if self._runner is None:
+            self._runner = asyncio.Runner()
+        return self._runner
+
+    def open(self):
+        """打开长连接"""
+        async def _do():
+            await self._client.__aenter__()
+        self._get_runner().run(_do())
+        self._connected = True
+
+    def close(self):
+        """关闭长连接"""
+        if self._connected:
+            async def _do():
+                await self._client.__aexit__(None, None, None)
+            self._get_runner().run(_do())
+            self._connected = False
+        if self._runner is not None:
+            self._runner.close()
+            self._runner = None
 
     def _parse_result(self, result) -> dict | list:
         """从 FastMCP call_tool 返回结果中提取 JSON 数据"""
@@ -48,11 +73,12 @@ class _TencentDocClient:
         return json.loads(text)
 
     def _call_tool(self, name: str, arguments: dict | None = None) -> object:
-        """同步调用 MCP tool"""
+        """同步调用 MCP tool（复用长连接）"""
+        if not self._connected:
+            self.open()
         async def _do():
-            async with self._client as c:
-                return await c.call_tool(name, arguments)
-        return asyncio.run(_do())
+            return await self._client.call_tool(name, arguments)
+        return self._get_runner().run(_do())
 
     def list_spaces(self, num: int = 0) -> list[dict]:
         """列出知识库空间"""
@@ -152,9 +178,10 @@ class TencentSource(SourceBase):
         if not token:
             raise ValueError("环境变量 TENCENT_DOCS_TOKEN 未设置")
 
+        self._client = _TencentDocClient(token)
+
         if space_name:
-            client = _TencentDocClient(token)
-            resolved_id = client.resolve_space_name(space_name)
+            resolved_id = self._client.resolve_space_name(space_name)
             if not resolved_id:
                 raise ValueError(f"无法找到空间: '{space_name}'")
             self._space_id = resolved_id
@@ -166,10 +193,12 @@ class TencentSource(SourceBase):
         self._folders = folders
         self._include_types = set(include_types) if include_types else None
         self._fetch_mode = fetch_mode
-        self._client = _TencentDocClient(token)
 
     def supported_change_detection(self) -> list[str]:
         return ["hash"]
+
+    def close(self):
+        self._client.close()
 
     def list(self) -> list[BundleMeta]:
         logger.info("列出文档: space_id=%s, folders=%s", self._space_id, self._folders)
