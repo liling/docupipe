@@ -1696,3 +1696,81 @@ class TestDingtalkSourceDocMode:
         from docupipe.sources.dingtalk import DingtalkSource
         with pytest.raises(ValueError, match="mode"):
             DingtalkSource(mode="invalid", folder_id="f1")
+
+
+class TestDingtalkSourceDocList:
+    def _mock_list_nodes_by_folder(self, monkeypatch, folder_nodes, node_info=None):
+        """mock list_nodes_by_folder 和 get_node_info，返回指定的节点树"""
+        from docupipe.sources.dingtalk import _WikiClient
+
+        def mock_list(self, folder_id):
+            return folder_nodes.get(folder_id, [])
+
+        def mock_get_node_info(self, node_id):
+            return node_info or {"extension": ""}
+
+        monkeypatch.setattr(_WikiClient, "list_nodes_by_folder", mock_list)
+        monkeypatch.setattr(_WikiClient, "get_node_info", mock_get_node_info)
+
+    def test_doc_mode_list_collects_files(self, monkeypatch):
+        from docupipe.sources.dingtalk import DingtalkSource
+        nodes = {
+            "f1": [
+                {"nodeId": "doc1", "name": "文档1", "nodeType": "doc",
+                 "contentType": "DOCUMENT", "extension": "", "updateTime": 1000},
+                {"nodeId": "doc2", "name": "文档2.docx", "nodeType": "doc",
+                 "contentType": "DOCUMENT", "extension": "docx", "updateTime": 2000},
+            ]
+        }
+        self._mock_list_nodes_by_folder(monkeypatch, nodes)
+        source = DingtalkSource(mode="doc", folder_id="f1")
+        result = source.list()
+        assert len(result) == 2
+        assert result[0].id == "doc1"
+        assert result[1].id == "doc2"
+
+    def test_doc_mode_list_recursive_folders(self, monkeypatch):
+        from docupipe.sources.dingtalk import DingtalkSource
+        nodes = {
+            "root": [
+                {"nodeId": "sub1", "name": "子文件夹", "nodeType": "folder", "hasChildren": True},
+                {"nodeId": "doc1", "name": "根文件.txt", "nodeType": "doc",
+                 "contentType": "FILE", "extension": "txt", "updateTime": 1000},
+            ],
+            "sub1": [
+                {"nodeId": "doc2", "name": "子文件.pdf", "nodeType": "doc",
+                 "contentType": "FILE", "extension": "pdf", "updateTime": 2000},
+            ]
+        }
+        self._mock_list_nodes_by_folder(monkeypatch, nodes)
+        source = DingtalkSource(mode="doc", folder_id="root")
+        result = source.list()
+        assert len(result) == 2
+        paths = [r.path for r in result]
+        assert "根文件.txt" in paths
+        assert "子文件夹/子文件.pdf" in paths
+
+    def test_doc_mode_list_no_space_name(self, monkeypatch):
+        from docupipe.sources.dingtalk import DingtalkSource
+        nodes = {
+            "f1": [
+                {"nodeId": "doc1", "name": "文档", "nodeType": "doc",
+                 "contentType": "DOCUMENT", "extension": "", "updateTime": 1000},
+            ]
+        }
+        self._mock_list_nodes_by_folder(monkeypatch, nodes)
+        source = DingtalkSource(mode="doc", folder_id="f1")
+        result = source.list()
+        assert result[0].extra["space_name"] == ""
+
+    def test_doc_mode_list_skip_folders(self, monkeypatch):
+        from docupipe.sources.dingtalk import DingtalkSource
+        nodes = {
+            "f1": [
+                {"nodeId": "empty", "name": "空文件夹", "nodeType": "folder", "hasChildren": False},
+            ]
+        }
+        self._mock_list_nodes_by_folder(monkeypatch, nodes)
+        source = DingtalkSource(mode="doc", folder_id="f1")
+        result = source.list()
+        assert len(result) == 0

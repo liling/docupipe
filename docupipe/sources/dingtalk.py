@@ -168,6 +168,10 @@ class DingtalkSource(SourceBase):
         return ["mtime", "hash"]
 
     def list(self) -> list[BundleMeta]:
+        if self._mode == "doc":
+            return self._list_doc_mode()
+
+        # --- wiki 模式 ---
         # 如果通过 space_id 传入且没有名称，尝试获取名称
         if not self._space_name:
             try:
@@ -275,6 +279,64 @@ class DingtalkSource(SourceBase):
                 )],
                 context=context,
             )
+
+    def _list_doc_mode(self) -> list[BundleMeta]:
+        """doc 模式：从指定文件夹递归列出文档"""
+        logger.info("列出文档: folder=%s", self._doc_folder_id)
+        nodes = self._collect_doc_nodes(self._doc_folder_id)
+        result = []
+        for node in nodes:
+            node_type = node.get("nodeType", "")
+            if node_type == "folder":
+                continue
+            node_id = node.get("nodeId", "")
+            title = node.get("name", "未命名")
+            content_type = node.get("contentType", "")
+            if self._include_types is not None and content_type not in self._include_types:
+                continue
+            extension = node.get("extension", "")
+
+            if content_type == "DOCUMENT" and not extension:
+                info = self._client.get_node_info(node_id)
+                extension = info.get("extension", "")
+                logger.debug("doc info 补全 extension: %s → %s", title, extension or "(空)")
+
+            result.append(BundleMeta(
+                id=node_id,
+                title=title,
+                path=node.get("_path", ""),
+                hash="",
+                extra={
+                    "dingtalk_content_type": content_type,
+                    "extension": extension,
+                    "dingtalk_extension": extension,
+                    "dingtalk_update_time": node.get("updateTime"),
+                    "dingtalk_node_type": node_type,
+                    "space_name": "",
+                    "mtime": node.get("updateTime"),
+                },
+            ))
+        logger.info("列出文档完成: 共 %d 个文档", len(result))
+        return result
+
+    def _collect_doc_nodes(self, folder_id: str, parent_path: str = "") -> list[dict]:
+        """doc 模式：递归收集文件夹下的所有文档节点"""
+        logger.debug("收集 doc 节点: folder=%s", folder_id)
+        nodes = self._client.list_nodes_by_folder(folder_id)
+        result = []
+        for node in nodes:
+            title = node.get("name", "未命名")
+            node_id = node.get("nodeId", "")
+            node_type = node.get("nodeType", "")
+            current_path = f"{parent_path}/{title}" if parent_path else title
+
+            if node_type == "folder":
+                if node.get("hasChildren"):
+                    result.extend(self._collect_doc_nodes(node_id, current_path))
+            else:
+                node["_path"] = current_path
+                result.append(node)
+        return result
 
     def _resolve_folder_path(self, path: str) -> str | None:
         """将文件夹路径（如 '产品规划物料/解决方案'）解析为 folder ID"""
