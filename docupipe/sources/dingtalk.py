@@ -130,12 +130,24 @@ class _WikiClient:
 class DingtalkSource(SourceBase):
     def __init__(self, space: str | None = None, space_id: str | None = None,
                  folder_id: str | None = None, folders: list[str] | None = None,
-                 include_types: list[str] | None = None, **kwargs):
-        # 支持通过 space 名称或 space_id 指定知识库
+                 include_types: list[str] | None = None, mode: str = "wiki",
+                 **kwargs):
+        self._mode = mode
+        if mode == "doc":
+            if not folder_id:
+                raise ValueError("doc 模式必须提供 folder_id 参数")
+            self._doc_folder_id = folder_id
+            self._include_types = set(include_types) if include_types else None
+            self._client = _WikiClient()
+            return
+
+        if mode != "wiki":
+            raise ValueError(f"不支持的 mode: {mode}，可选值: wiki, doc")
+
+        # wiki 模式：原有逻辑
         if space and space_id:
             logger.warning("同时提供了 space 和 space_id，将优先使用 space")
         if space:
-            # 通过名称解析 ID
             resolved_id = _WikiClient().resolve_space_name(space)
             if not resolved_id:
                 raise ValueError(f"无法找到知识库: '{space}'")
@@ -145,7 +157,7 @@ class DingtalkSource(SourceBase):
             self._space_id = space_id
             self._space_name = ""
         else:
-            raise ValueError("必须提供 space 或 space_id 参数")
+            raise ValueError("wiki 模式必须提供 space 或 space_id 参数")
 
         self._folder_id = folder_id
         self._folders = folders

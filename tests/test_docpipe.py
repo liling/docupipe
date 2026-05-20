@@ -1672,3 +1672,27 @@ class TestWikiClientListNodesByFolder:
         result = client.list_nodes_by_folder("f1")
         assert len(result) == 2
         assert call_count == 2
+
+
+class TestDingtalkSourceDocMode:
+    def test_doc_mode_requires_folder_id(self):
+        from docupipe.sources.dingtalk import DingtalkSource
+        with pytest.raises(ValueError, match="folder_id"):
+            DingtalkSource(mode="doc")
+
+    def test_doc_mode_stores_folder_id(self, monkeypatch):
+        from docupipe.sources.dingtalk import DingtalkSource
+        source = DingtalkSource(mode="doc", folder_id="test_folder_id")
+        assert source._mode == "doc"
+        assert source._doc_folder_id == "test_folder_id"
+
+    def test_wiki_mode_default(self, monkeypatch):
+        from docupipe.sources.dingtalk import DingtalkSource
+        monkeypatch.setattr("docupipe.sources.dingtalk._WikiClient.resolve_space_name", lambda self, x: "ws1")
+        source = DingtalkSource(space="测试")
+        assert source._mode == "wiki"
+
+    def test_invalid_mode_raises(self):
+        from docupipe.sources.dingtalk import DingtalkSource
+        with pytest.raises(ValueError, match="mode"):
+            DingtalkSource(mode="invalid", folder_id="f1")
