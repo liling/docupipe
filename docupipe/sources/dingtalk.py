@@ -80,6 +80,26 @@ class _WikiClient:
                      workspace_name or workspace_id, folder_name or "(根)", page_count, len(all_items))
         return all_items
 
+    def list_nodes_by_folder(self, folder_id: str) -> list[dict]:
+        """列出指定文件夹下的节点（用于 doc 模式）"""
+        all_items: list[dict] = []
+        page_token: str | None = None
+        page_count = 0
+        while True:
+            page_count += 1
+            args = ["doc", "list", "--folder", folder_id, "--page-size", "50"]
+            if page_token:
+                args += ["--page-token", page_token]
+            data = self._run_dws(args)
+            items = data.get("nodes", []) if isinstance(data, dict) else []
+            all_items.extend(items)
+            logger.debug("列出节点: 第 %d 页, 获取 %d 条", page_count, len(items))
+            page_token = data.get("nextPageToken") if isinstance(data, dict) else None
+            if not page_token:
+                break
+        logger.info("列出节点完成: folder=%s, 共 %d 页, %d 个节点", folder_id, page_count, len(all_items))
+        return all_items
+
     def read_document(self, node_id: str) -> str:
         logger.debug("读取文档: node_id=%s", node_id)
         data = self._run_dws(["doc", "read", "--node", node_id])

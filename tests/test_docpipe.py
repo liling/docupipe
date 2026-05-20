@@ -1642,3 +1642,33 @@ class TestHindsightExtraMetadata:
         dest.update_config(resolved)
         item = dest._build_retain_item(self._make_bundle())
         assert item["metadata"]["title"] == "自定义标题"
+
+
+class TestWikiClientListNodesByFolder:
+    def test_calls_doc_list_with_folder(self, monkeypatch):
+        from docupipe.sources.dingtalk import _WikiClient
+        captured = {}
+        def mock_run_dws(self, args):
+            captured["args"] = args
+            return {"nodes": [{"nodeId": "abc", "name": "doc1", "nodeType": "doc"}]}
+        monkeypatch.setattr(_WikiClient, "_run_dws", mock_run_dws)
+        client = _WikiClient()
+        result = client.list_nodes_by_folder("folder123")
+        assert captured["args"] == ["doc", "list", "--folder", "folder123", "--page-size", "50"]
+        assert len(result) == 1
+        assert result[0]["nodeId"] == "abc"
+
+    def test_pagination(self, monkeypatch):
+        from docupipe.sources.dingtalk import _WikiClient
+        call_count = 0
+        def mock_run_dws(self, args):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {"nodes": [{"nodeId": "a"}], "nextPageToken": "tok1"}
+            return {"nodes": [{"nodeId": "b"}]}
+        monkeypatch.setattr(_WikiClient, "_run_dws", mock_run_dws)
+        client = _WikiClient()
+        result = client.list_nodes_by_folder("f1")
+        assert len(result) == 2
+        assert call_count == 2
