@@ -35,13 +35,21 @@ source:
     include: ["*.md", "*.txt"] # 包含模式（可选）
     exclude: ["*.tmp"]         # 排除模式（可选）
 
-# 钉钉知识库
+# 钉钉知识库（wiki 模式，默认）
 source:
   dingtalk:
     space: "产品知识库"           # 知识库名称（与 space_id 二选一）
     # space_id: "kfiwoue83nkxQXyA"
     folders: ["产品规划/解决方案"] # 文件夹路径（可选）
     include_types: [DOCUMENT, ALIDOC]  # 文档类型过滤（可选）
+
+# 钉钉文档（doc 模式，直接操作文件夹，不依赖知识库概念）
+source:
+  dingtalk:
+    mode: doc
+    folder_id: "your_folder_id"         # 文件夹 ID（必填）
+    folders: ["B1 平台/平台线/02 解决方案"] # 文件夹子路径（可选）
+    include_types: [DOCUMENT, ALIDOC]
 
 # 腾讯文档
 source:
@@ -67,7 +75,11 @@ destination:
   hindsight:
     bank_id: ${HINDSIGHT_BANK_ID}
     api_url: ${HINDSIGHT_API_URL}
-    context_prefix: "知识库"   # 可选 context 前缀
+    context_prefix: "知识库"             # 可选 context 前缀
+    # document_id_template: "custom:${context.id}"   # 自定义文档 ID
+    # context_template: "文档：${context.title}"     # 自定义 context（优先级高于 context_prefix）
+    # extra_tags: ["生产", "已审核"]                 # 附加标签
+    # extra_metadata: {"source": "docupipe"}         # 附加元数据
 ```
 
 ### 4. 配置 Steps

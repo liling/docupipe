@@ -42,6 +42,11 @@ Hindsight Memory 目的地全局默认值：
 | `api_url` | string | `${HINDSIGHT_API_URL}` | Hindsight 服务地址 |
 | `api_key` | string | `${HINDSIGHT_API_KEY}` | API 密钥 |
 | `bank_id` | string | `${HINDSIGHT_BANK_ID}` | 记忆库 ID |
+| `context_prefix` | string | null | context 字符串前缀 |
+| `document_id_template` | string | null | 自定义 document_id 模板 |
+| `context_template` | string | null | 自定义 context 字符串（优先级高于 context_prefix） |
+| `extra_tags` | list[string] | null | 附加标签列表 |
+| `extra_metadata` | object | null | 附加元数据字典 |
 
 ### image_description
 

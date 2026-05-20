@@ -45,7 +45,8 @@ class SourceBase(ABC):
 - 跳过以点开头的目录和文件（`.` 前缀视为隐藏）
 - 跳过无扩展名的文件
 - 跳过 `.json` 文件（如果同名的无扩展名主文件存在——这是 sidecar 过滤）
-- `list()` 返回的 `BundleMeta.id` 为文件内容的 SHA-256（用于不变检测）
+- `list()` 返回的 `BundleMeta.id` 默认使用文件内容的 SHA-256；如果同名 `.json` sidecar 文件存在且包含 `id` 字段，则优先使用 sidecar 中的 ID
+- 从 sidecar 中读取 `title`、`content_type`、`extension`、`dingtalk_extension`、`space_name` 等字段注入到 `extra`
 - `supported_change_detection()` 返回 `["mtime", "hash"]`
 - `context` 写入 `extension`、`absolute_path`、`size`、`mtime`
 
@@ -57,11 +58,19 @@ class SourceBase(ABC):
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `space` | str | 与 space_id 二选一 | 知识库名称（自动解析 ID） |
-| `space_id` | str | 与 space 二选一 | 知识库 workspace ID |
+| `space` | str | 与 space_id 二选一 | 知识库名称（自动解析 ID，仅 wiki 模式） |
+| `space_id` | str | 与 space 二选一 | 知识库 workspace ID（仅 wiki 模式） |
 | `folders` | list[str] | null | 文件夹路径列表（如 `["产品规划/解决方案"]`） |
 | `folder_id` | str | null | 单个文件夹 ID |
 | `include_types` | list[str] | null | 文档类型白名单（如 `ALIDOC`、`DOCUMENT`） |
+| `mode` | `"wiki"\|"doc"` | `"wiki"` | 操作模式 |
+
+**模式说明：**
+
+| 模式 | 说明 | 必需参数 |
+|------|------|----------|
+| `wiki` | 操作知识库（默认），使用 `dws doc list --workspace` API | `space` 或 `space_id` |
+| `doc` | 操作指定文件夹下的文档，不依赖知识库概念。`space_name` 为空字符串 | `folder_id` |
 
 **行为：**
 - `list()` 递归遍历指定文件夹，收集文档节点
@@ -70,7 +79,7 @@ class SourceBase(ABC):
 - ALIDOC 子类型 `axls`、`amindmap`、`aform`、`abitable`、`able` 不支持，抛出 `SkipBundle`
 - 导出 Markdown 会清理残留的内联 HTML 标签
 - `supported_change_detection()` 返回 `["mtime", "hash"]`
-- `context` 写入 `dingtalk_content_type`、`dingtalk_update_time`、`dingtalk_node_type`、`space_name`
+- `context` 写入 `dingtalk_content_type`、`dingtalk_update_time`、`dingtalk_node_type`、`dingtalk_extension`、`space_name`、`mtime`
 
 ### tencent
 
@@ -158,13 +167,18 @@ class DestinationBase(ABC):
 | `api_url` | str | `${HINDSIGHT_API_URL}` | 服务地址 |
 | `api_key` | str | `${HINDSIGHT_API_KEY}` | API 密钥 |
 | `context_prefix` | str | null | context 字符串前缀 |
+| `document_id_template` | str | null | 自定义 document_id 模板字符串 |
+| `context_template` | str | null | 自定义 context 字符串模板（优先级高于 context_prefix） |
+| `extra_tags` | list[str] | null | 附加标签列表，追加到自动生成的 space:/path: 标签之后 |
+| `extra_metadata` | dict | null | 附加元数据字典，合并到 metadata 对象中 |
 
 **行为：**
 - 使用 hindsight_client SDK，通过 `retain_batch(..., retain_async=True)` 异步写入
-- `document_id` 格式：`{source}:{id}`（如 `dingtalk:node123`）
+- `document_id` 默认格式：`{source}:{id}`（如 `dingtalk:node123`）；设置 `document_id_template` 可自定义
 - 路径自动拆分为 `space:` 和 `path:` 标签
-- context 字符串由 `context_prefix` 或标题+路径自动构建
-- 时间戳优先使用 `dingtalk_update_time`，否则使用当前时间
+- context 字符串优先级：`context_template` > `context_prefix` > 标题+路径自动构建
+- `extra_tags` 追加到自动生成的标签列表末尾；`extra_metadata` 合并到 `metadata` 对象中
+- 时间戳优先使用 `mtime`（context 中的通用修改时间戳，毫秒），否则使用当前时间
 - 不支持 `remove()`
 - 需要调用 `close()` 释放 hindsight 连接（CLI 自动处理）
 
