@@ -80,7 +80,7 @@ class _WikiClient:
                      workspace_name or workspace_id, folder_name or "(根)", page_count, len(all_items))
         return all_items
 
-    def list_nodes_by_folder(self, folder_id: str) -> list[dict]:
+    def list_nodes_by_folder(self, folder_id: str, folder_name: str = "") -> list[dict]:
         """列出指定文件夹下的节点（用于 doc 模式）"""
         all_items: list[dict] = []
         page_token: str | None = None
@@ -97,7 +97,7 @@ class _WikiClient:
             page_token = data.get("nextPageToken") if isinstance(data, dict) else None
             if not page_token:
                 break
-        logger.info("列出节点完成: folder=%s, 共 %d 页, %d 个节点", folder_id, page_count, len(all_items))
+        logger.info("列出节点完成: %s, 共 %d 页, %d 个节点", folder_name or folder_id, page_count, len(all_items))
         return all_items
 
     def read_document(self, node_id: str) -> str:
@@ -137,6 +137,7 @@ class DingtalkSource(SourceBase):
             if not folder_id:
                 raise ValueError("doc 模式必须提供 folder_id 参数")
             self._doc_folder_id = folder_id
+            self._folders = folders
             self._include_types = set(include_types) if include_types else None
             self._client = _WikiClient()
             return
@@ -282,8 +283,19 @@ class DingtalkSource(SourceBase):
 
     def _list_doc_mode(self) -> list[BundleMeta]:
         """doc 模式：从指定文件夹递归列出文档"""
-        logger.info("列出文档: folder=%s", self._doc_folder_id)
-        nodes = self._collect_doc_nodes(self._doc_folder_id)
+        if self._folders:
+            logger.info("列出文档: folder=%s, 路径=%s", self._doc_folder_id, self._folders)
+            all_nodes = []
+            for folder_path in self._folders:
+                folder_id = self._resolve_doc_folder_path(folder_path)
+                if folder_id:
+                    all_nodes.extend(self._collect_doc_nodes(folder_id, parent_path=folder_path))
+                else:
+                    logger.warning("跳过无效的文件夹路径: %s", folder_path)
+            nodes = all_nodes
+        else:
+            logger.info("列出文档: folder=%s", self._doc_folder_id)
+            nodes = self._collect_doc_nodes(self._doc_folder_id)
         result = []
         for node in nodes:
             node_type = node.get("nodeType", "")
@@ -321,8 +333,8 @@ class DingtalkSource(SourceBase):
 
     def _collect_doc_nodes(self, folder_id: str, parent_path: str = "") -> list[dict]:
         """doc 模式：递归收集文件夹下的所有文档节点"""
-        logger.debug("收集 doc 节点: folder=%s", folder_id)
-        nodes = self._client.list_nodes_by_folder(folder_id)
+        logger.debug("收集 doc 节点: %s", parent_path or folder_id)
+        nodes = self._client.list_nodes_by_folder(folder_id, folder_name=parent_path or folder_id)
         result = []
         for node in nodes:
             title = node.get("name", "未命名")
@@ -337,6 +349,29 @@ class DingtalkSource(SourceBase):
                 node["_path"] = current_path
                 result.append(node)
         return result
+
+    def _resolve_doc_folder_path(self, path: str) -> str | None:
+        """在 doc 模式下，将文件夹路径（如 'B1 平台产品/平台线/02 解决方案'）解析为 folder ID"""
+        segments = [s.strip() for s in path.split("/") if s.strip()]
+        if not segments:
+            return self._doc_folder_id
+
+        parent_id = self._doc_folder_id
+        resolved = ""
+        for segment in segments:
+            nodes = self._client.list_nodes_by_folder(parent_id, folder_name=resolved or self._doc_folder_id)
+            matched = None
+            for node in nodes:
+                if node.get("nodeType") == "folder" and node.get("name") == segment:
+                    matched = node
+                    break
+            if not matched:
+                logger.warning("未找到文件夹: '%s' (在 %s 下)", segment, resolved or "根目录")
+                return None
+            parent_id = matched.get("nodeId")
+            resolved = f"{resolved}/{segment}" if resolved else segment
+
+        return parent_id
 
     def _resolve_folder_path(self, path: str) -> str | None:
         """将文件夹路径（如 '产品规划物料/解决方案'）解析为 folder ID"""

@@ -12,8 +12,12 @@ image_description:
 converters:
   extensions:
     ".pdf": mineru
+    ".doc": markitdown
     ".docx": markitdown
+    ".ppt": markitdown
     ".pptx": markitdown
+    ".xls": markitdown
+    ".xlsx": markitdown
 
 pipelines:
 

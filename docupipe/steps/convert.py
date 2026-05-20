@@ -4,6 +4,7 @@ import base64
 import hashlib
 import logging
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -57,10 +58,20 @@ class ConvertStep(Step):
             logger.warning("convert step: 主文件内容不是 bytes，跳过转换")
             return bundle
 
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp_file:
             tmp_file.write(main.content)
             tmp_file.flush()
             temp_path = Path(tmp_file.name)
+
+        # 旧版 Office 格式用 LibreOffice 转换
+        _LEGACY_OFFICE = {"doc": "docx", "ppt": "pptx", "xls": "xlsx"}
+        converted_path = None
+        if ext in _LEGACY_OFFICE:
+            target_ext = _LEGACY_OFFICE[ext]
+            converted_path = self._convert_with_libreoffice(temp_path, target_ext)
+            if converted_path:
+                temp_path = converted_path
+                bundle.context["extension"] = target_ext
 
         try:
             markdown = converter.convert(temp_path)
@@ -83,8 +94,28 @@ class ConvertStep(Step):
             bundle.context["extension"] = "md"
         finally:
             temp_path.unlink(missing_ok=True)
+            if converted_path:
+                converted_path.unlink(missing_ok=True)
 
         return bundle
+
+    @staticmethod
+    def _convert_with_libreoffice(src_path: Path, target_format: str) -> Path | None:
+        """用 LibreOffice 将文件转为目标格式，返回转换后的文件路径"""
+        try:
+            result = subprocess.run(
+                ["soffice", "--headless", "--convert-to", target_format, "--outdir", str(src_path.parent), str(src_path)],
+                capture_output=True, timeout=120,
+            )
+            converted = src_path.with_suffix(f".{target_format}")
+            if converted.exists():
+                logger.info("LibreOffice 转换成功: %s → %s", src_path.name, converted.name)
+                return converted
+            logger.warning("LibreOffice 转换失败: %s", result.stderr.decode(errors="replace") if result.stderr else "")
+            return None
+        except Exception as e:
+            logger.warning("LibreOffice 转换失败: %s", e)
+            return None
 
     def _extract_inline_images(self, markdown: str, prefix: str = "") -> tuple[str, list[FileItem]]:
         """从 markdown 中提取 data:image base64 内联图片，返回(更新后的markdown, FileItem列表)"""

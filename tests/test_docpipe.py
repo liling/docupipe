@@ -1703,7 +1703,7 @@ class TestDingtalkSourceDocList:
         """mock list_nodes_by_folder 和 get_node_info，返回指定的节点树"""
         from docupipe.sources.dingtalk import _WikiClient
 
-        def mock_list(self, folder_id):
+        def mock_list(self, folder_id, folder_name=""):
             return folder_nodes.get(folder_id, [])
 
         def mock_get_node_info(self, node_id):
