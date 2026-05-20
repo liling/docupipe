@@ -111,12 +111,8 @@ class HindsightDestination(DestinationBase):
             "context": context_str,
             "tags": tags,
             "metadata": {
-                "id": bundle_context["id"],
-                "title": bundle_context["title"],
+                **{k: str(v) if not isinstance(v, str) else v for k, v in bundle_context.items()},
                 "content_type": bundle_context.get("dingtalk_content_type", ""),
-                "extension": bundle_context.get("extension", ""),
-                "dingtalk_extension": bundle_context.get("dingtalk_extension", ""),
-                "space_name": bundle_context.get("space_name", ""),
                 "relative_path": bundle_context["path"],
                 "full_path": f"{bundle_context.get('space_name', '')}/{bundle_context['path']}" if bundle_context.get("space_name") else bundle_context["path"],
                 "content_hash": bundle_context["hash"],

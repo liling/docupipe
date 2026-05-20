@@ -70,6 +70,7 @@ pipelines:
     destination:
       hindsight:
         context_prefix: "平台产品知识库"
+        context_template: "${context.space_name} ${context.title}"
     steps:
       - convert
       # - image_description    # 按需开启 AI 图片描述
@@ -112,6 +113,7 @@ pipelines:
         include: ["*.md"]
     destination:
       hindsight:
+        context_template: "${context.space_name} ${context.title}"
         context_prefix: "平台产品知识库"
     steps:
       - resolve_attachments
