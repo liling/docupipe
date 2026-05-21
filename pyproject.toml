@@ -38,7 +38,7 @@ dev = [
     "responses>=0.24.0",
 ]
 mineru = [
-    "mineru>=3.1.14",
+    "mineru[all]>=3.1.14",
 ]
 all = [
     "docupipe[dev,mineru]",
