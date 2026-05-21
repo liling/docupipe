@@ -236,3 +236,43 @@ class TestExcelStructuredEmptyRowsCols:
         content = result.main.content
         data_lines = [l for l in content.split("\n") if l.strip().startswith("|") and not l.startswith("|-")]
         assert len(data_lines) >= 3
+
+
+class TestExcelStructuredIntegration:
+    def test_full_pipeline_excel_to_hindsight_items(self):
+        """模拟完整 pipeline: excel_structured → HindsightDestination._build_retain_item"""
+        from docupipe.config import resolve_context_vars
+        from docupipe.destinations.hindsight import HindsightDestination
+
+        bundle = _make_xlsx_bundle(
+            {"员工": [["姓名", "部门"], ["张三", "销售部"]], "项目": [["名称", "状态"], ["Alpha", "进行中"]]},
+            _source="local",
+            hash="abc123",
+        )
+
+        step = ExcelStructuredStep()
+        result = step.process(bundle)
+
+        assert len(result.files) == 2
+        assert result.files[0].role == "main"
+        assert result.files[1].role == "attachment"
+
+        dest = HindsightDestination(
+            bank_id="test",
+            api_url="http://localhost",
+            api_key="k",
+            document_id_template="${context._source}:${context.id}:${context._sheet_name}",
+        )
+        dest._process_roles = ["main", "attachment"]
+
+        for file_item in result.files:
+            sheet_name = PurePosixPath(file_item.name).stem
+            # 模拟 pipeline 层的 resolve_context_vars + update_config
+            resolved_config = resolve_context_vars(
+                {"document_id_template": dest._document_id_template},
+                {**result.context, "_sheet_name": sheet_name},
+            )
+            dest.update_config(resolved_config)
+            item = dest._build_retain_item(result, file_item=file_item, sheet_name=sheet_name)
+            assert item["content"]
+            assert "local:doc1:" in item["document_id"]
