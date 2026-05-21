@@ -28,3 +28,4 @@ import docupipe.steps.image_description  # noqa: F401, E402
 import docupipe.steps.s3_upload  # noqa: F401, E402
 import docupipe.steps.resolve_attachments  # noqa: F401, E402
 import docupipe.steps.tencent_delete  # noqa: F401, E402
+import docupipe.steps.excel_structured  # noqa: F401, E402
