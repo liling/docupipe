@@ -12,10 +12,118 @@ from docupipe.utils import guess_mime_type
 
 logger = logging.getLogger(__name__)
 
-_ALIDOC_UNSUPPORTED = frozenset({"axls", "amindmap", "aform", "abitable", "able"})
+_DISCOVERY_URL = "https://mcp.dingtalk.com/cli/discovery/apis"
+
+
+def _resolve_sheet_mcp_url() -> str:
+    """从钉钉 MCP 发现接口获取 sheet 服务端点 URL。"""
+    resp = requests.get(_DISCOVERY_URL, timeout=10)
+    resp.raise_for_status()
+    for server in resp.json().get("servers", []):
+        if server["server"].get("name") == "sheet":
+            remotes = server["server"].get("remotes", [])
+            if remotes:
+                return remotes[0]["url"]
+    raise RuntimeError("钉钉 MCP 发现接口未找到 sheet 服务")
+
+_ALIDOC_UNSUPPORTED = frozenset({"amindmap", "aform", "abitable", "able"})
 
 from docupipe.sources import register_source
 from docupipe.sources.base import SourceBase
+
+
+def _get_dws_token() -> str:
+    """从 macOS Keychain + 加密文件解密 dws 的 access token。
+
+    dws 在 macOS 上使用 Keychain 存储 DEK（数据加密密钥），
+    加密的 token 数据保存在 ~/Library/Application Support/dws-cli/auth-token.enc。
+    """
+    import base64
+    import os
+    import subprocess
+
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    # 1. 从 Keychain 获取 DEK
+    result = subprocess.run(
+        ["security", "find-generic-password", "-s", "dws-cli", "-a", "dek", "-w"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise FileNotFoundError("dws 未登录，请先运行 dws auth login")
+    raw = result.stdout.strip()
+
+    # go-keyring 使用双重 base64 编码：go-keyring-base64:<outer_b64> → inner_b64 → bytes
+    if raw.startswith("go-keyring-base64:"):
+        inner = base64.b64decode(raw[len("go-keyring-base64:"):]).decode("ascii")
+        dek = base64.b64decode(inner)
+    else:
+        dek = base64.b64decode(raw)
+
+    # 2. 解密 token 文件（格式: nonce(12 bytes) + ciphertext+tag）
+    enc_path = os.path.expanduser("~/Library/Application Support/dws-cli/auth-token.enc")
+    data = open(enc_path, "rb").read()
+    plaintext = AESGCM(dek).decrypt(data[:12], data[12:], None)
+    token_data = json.loads(plaintext)
+    return token_data["access_token"]
+
+
+class _SheetExportClient:
+    """通过钉钉 MCP JSON-RPC 接口导出电子表格。"""
+
+    def __init__(self):
+        self._token = _get_dws_token()
+        self._url = _resolve_sheet_mcp_url()
+
+    def _mcp_call(self, tool_name: str, arguments: dict) -> dict:
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "x-user-access-token": self._token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        resp = requests.post(self._url, headers=headers, json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments},
+        })
+        resp.raise_for_status()
+        body = resp.json()
+        content = body.get("result", {}).get("content", [])
+        if not content:
+            raise RuntimeError(f"MCP 返回空结果: {body}")
+        return json.loads(content[0]["text"])
+
+    def export_to_xlsx(self, node_id: str, timeout: int = 300, interval: int = 3) -> str:
+        """提交导出任务并轮询直到完成，返回 xlsx 下载链接。"""
+        import time
+
+        result = self._mcp_call("submit_export_job", {
+            "nodeId": node_id,
+            "exportFormat": "xlsx",
+        })
+        job_id = result.get("jobId", "")
+        if not job_id:
+            raise RuntimeError(f"submit_export_job 未返回 jobId: {result}")
+        logger.info("表格导出任务已提交: jobId=%s", job_id)
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            time.sleep(interval)
+            result = self._mcp_call("query_export_job", {"jobId": job_id})
+            status = result.get("status", "")
+            if status in ("success", "completed"):
+                download_url = result.get("downloadUrl", "")
+                if not download_url:
+                    raise RuntimeError(f"导出完成但无下载链接: {result}")
+                logger.info("表格导出完成: jobId=%s", job_id)
+                return download_url
+            if status == "failed":
+                raise RuntimeError(f"导出失败: {result}")
+            logger.debug("导出进行中: jobId=%s, status=%s", job_id, status)
+
+        raise RuntimeError(f"导出超时({timeout}s): jobId={job_id}")
 
 
 class _WikiClient:
@@ -248,6 +356,9 @@ class DingtalkSource(SourceBase):
             if extension in _ALIDOC_UNSUPPORTED:
                 raise SkipBundle(f"ALIDOC 子类型暂不支持: extension={extension}")
 
+            if extension == "axls":
+                return self._fetch_axls(meta, context)
+
             markdown = self._client.read_document(node_id)
             markdown = self._clean_html_tags(markdown)
 
@@ -421,6 +532,27 @@ class DingtalkSource(SourceBase):
                 result.append(node)
         logger.debug("收集节点完成: 文件夹=%d, 文档=%d", folder_count, doc_count)
         return result
+
+    def _fetch_axls(self, meta: BundleMeta, context: dict) -> Bundle:
+        """导出钉钉电子表格为 xlsx 并下载。"""
+        node_id = meta.id
+        export_client = _SheetExportClient()
+        download_url = export_client.export_to_xlsx(node_id)
+
+        resp = requests.get(download_url, timeout=120)
+        resp.raise_for_status()
+        logger.info("xlsx 下载完成: %s, 大小=%d bytes", meta.title, len(resp.content))
+
+        context["extension"] = "xlsx"
+        return Bundle(
+            files=[FileItem(
+                name=f"{meta.title}.xlsx",
+                content=resp.content,
+                content_type=guess_mime_type("xlsx"),
+                role="main",
+            )],
+            context=context,
+        )
 
     @staticmethod
     def _clean_html_tags(markdown: str) -> str:
