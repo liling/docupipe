@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from pathlib import PurePosixPath
 
 from docupipe.destinations import register_destination
 from docupipe.destinations.base import DestinationBase
@@ -12,7 +11,7 @@ from docupipe.models import Bundle, FileItem
 
 @register_destination("hindsight")
 class HindsightDestination(DestinationBase):
-    _config_keys = {"context_prefix", "document_id_template", "context_template", "extra_tags", "extra_metadata", "process_roles"}
+    _config_keys = {"context_prefix", "document_id_template", "context_template", "extra_tags", "extra_metadata"}
 
     def __init__(
         self,
@@ -24,7 +23,6 @@ class HindsightDestination(DestinationBase):
         context_template: str | None = None,
         extra_tags: list | None = None,
         extra_metadata: dict | None = None,
-        process_roles: list | None = None,
         **kwargs,
     ):
         self.bank_id = bank_id or os.environ.get("HINDSIGHT_BANK_ID", "")
@@ -35,7 +33,6 @@ class HindsightDestination(DestinationBase):
         self._context_template = context_template
         self._extra_tags = extra_tags
         self._extra_metadata = extra_metadata
-        self._process_roles = process_roles or ["main"]
         self._client = None
 
     def _get_client(self):
@@ -47,20 +44,19 @@ class HindsightDestination(DestinationBase):
 
     def write(self, bundle: Bundle) -> str:
         client = self._get_client()
+        main_files = bundle.get_by_role("main")
 
-        if len(self._process_roles) == 1 and self._process_roles[0] == "main":
+        if len(main_files) <= 1:
             item = self._build_retain_item(bundle)
             client.retain_batch(self.bank_id, items=[item], retain_async=True)
             return item["document_id"]
 
         first_id = None
-        for role in self._process_roles:
-            for file_item in bundle.get_by_role(role):
-                sheet_name = PurePosixPath(file_item.name).stem
-                item = self._build_retain_item(bundle, file_item=file_item, sheet_name=sheet_name)
-                client.retain_batch(self.bank_id, items=[item], retain_async=True)
-                if first_id is None:
-                    first_id = item["document_id"]
+        for file_item in main_files:
+            item = self._build_retain_item(bundle, file_item=file_item)
+            client.retain_batch(self.bank_id, items=[item], retain_async=True)
+            if first_id is None:
+                first_id = item["document_id"]
 
         return first_id or ""
 
@@ -72,10 +68,8 @@ class HindsightDestination(DestinationBase):
             self._client.__exit__(None, None, None)
             self._client = None
 
-    def _build_retain_item(self, bundle: Bundle, *, file_item: FileItem | None = None, sheet_name: str | None = None) -> dict:
+    def _build_retain_item(self, bundle: Bundle, *, file_item: FileItem | None = None) -> dict:
         bundle_context = dict(bundle.context)
-        if sheet_name is not None:
-            bundle_context["_sheet_name"] = sheet_name
 
         target_file = file_item or bundle.main
         if not target_file:
@@ -122,8 +116,8 @@ class HindsightDestination(DestinationBase):
         else:
             source_name = bundle_context.get("_source", "local")
             document_id = f"{source_name}:{bundle_context['id']}"
-            if sheet_name:
-                document_id = f"{document_id}:{sheet_name}"
+        if file_item is not None:
+            document_id = f"{document_id}:{file_item.name}"
 
         item = {
             "content": content,

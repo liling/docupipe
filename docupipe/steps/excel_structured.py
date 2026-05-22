@@ -51,13 +51,12 @@ class ExcelStructuredStep(Step):
             if not md.strip():
                 continue
 
-            role = "main" if not new_files else "attachment"
             sheet_name = ws.title
             new_files.append(FileItem(
                 name=f"{stem}_{sheet_name}.md",
                 content=md,
                 content_type="text/markdown",
-                role=role,
+                role="main",
             ))
 
         wb.close()

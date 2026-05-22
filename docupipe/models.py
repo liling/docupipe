@@ -35,7 +35,6 @@ from pathlib import PurePosixPath
 #   tencent_doc_type      | str | 腾讯文档类型枚举（document/sheet 等）| TencentSource 写入
 #   tencent_node_type     | str | 腾讯节点类型（wiki_folder/doc 等）| TencentSource 写入
 #   tencent_has_child     | bool | 腾讯节点是否有子节点 | TencentSource 写入
-#   _sheet_name           | str  | Excel Sheet 名称         | ExcelStructuredStep 写入 | HindsightDestination 读取
 
 
 class SkipBundle(Exception):

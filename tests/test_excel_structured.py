@@ -92,7 +92,7 @@ class TestExcelStructuredSingleSheet:
 
 
 class TestExcelStructuredMultipleSheets:
-    def test_two_sheets_produces_main_and_attachment(self):
+    def test_two_sheets_both_main(self):
         bundle = _make_xlsx_bundle({
             "Sheet1": [["A"], ["1"]],
             "Sheet2": [["B"], ["2"]],
@@ -102,11 +102,11 @@ class TestExcelStructuredMultipleSheets:
 
         assert len(result.files) == 2
         assert result.files[0].role == "main"
-        assert result.files[1].role == "attachment"
+        assert result.files[1].role == "main"
         assert "Sheet1" in result.files[0].name
         assert "Sheet2" in result.files[1].name
 
-    def test_three_sheets_produces_one_main_two_attachments(self):
+    def test_three_sheets_all_main(self):
         bundle = _make_xlsx_bundle({
             "A": [["x"], ["1"]],
             "B": [["y"], ["2"]],
@@ -117,7 +117,7 @@ class TestExcelStructuredMultipleSheets:
 
         assert len(result.files) == 3
         roles = [f.role for f in result.files]
-        assert roles == ["main", "attachment", "attachment"]
+        assert roles == ["main", "main", "main"]
 
 
 class TestExcelStructuredMergedCells:
@@ -240,8 +240,8 @@ class TestExcelStructuredEmptyRowsCols:
 
 class TestExcelStructuredIntegration:
     def test_full_pipeline_excel_to_hindsight_items(self):
-        """模拟完整 pipeline: excel_structured → HindsightDestination._build_retain_item"""
-        from docupipe.config import resolve_context_vars
+        """模拟完整 pipeline: excel_structured → HindsightDestination.write"""
+        from unittest.mock import MagicMock
         from docupipe.destinations.hindsight import HindsightDestination
 
         bundle = _make_xlsx_bundle(
@@ -254,25 +254,73 @@ class TestExcelStructuredIntegration:
         result = step.process(bundle)
 
         assert len(result.files) == 2
-        assert result.files[0].role == "main"
-        assert result.files[1].role == "attachment"
+        assert all(f.role == "main" for f in result.files)
 
-        dest = HindsightDestination(
-            bank_id="test",
-            api_url="http://localhost",
-            api_key="k",
-            document_id_template="${context._source}:${context.id}:${context._sheet_name}",
+        dest = HindsightDestination(bank_id="test", api_url="http://localhost", api_key="k")
+        mock_client = MagicMock()
+        dest._client = mock_client
+        dest._get_client = lambda: mock_client
+
+        dest.write(result)
+        assert mock_client.retain_batch.call_count == 2
+
+        item1 = mock_client.retain_batch.call_args_list[0][1]["items"][0]
+        assert item1["document_id"].startswith("local:doc1:")
+        assert "张三" in item1["content"]
+
+        item2 = mock_client.retain_batch.call_args_list[1][1]["items"][0]
+        assert item2["document_id"].startswith("local:doc1:")
+        assert "Alpha" in item2["content"]
+
+
+class TestExcelStructuredE2E:
+    def test_multi_sheet_excel_through_full_pipeline(self):
+        """端到端: excel_structured → convert(跳过) → HindsightDestination.write"""
+        from unittest.mock import MagicMock
+        from docupipe.destinations.hindsight import HindsightDestination
+        from docupipe.steps.convert import ConvertStep
+
+        # 准备：多 Sheet Excel
+        bundle = _make_xlsx_bundle(
+            {
+                "Sheet1": [["姓名", "部门"], ["张三", "销售部"]],
+                "Sheet2": [["项目", "状态"], ["Alpha", "进行中"]],
+            },
+            _source="local",
+            hash="abc123",
         )
-        dest._process_roles = ["main", "attachment"]
 
-        for file_item in result.files:
-            sheet_name = PurePosixPath(file_item.name).stem
-            # 模拟 pipeline 层的 resolve_context_vars + update_config
-            resolved_config = resolve_context_vars(
-                {"document_id_template": dest._document_id_template},
-                {**result.context, "_sheet_name": sheet_name},
-            )
-            dest.update_config(resolved_config)
-            item = dest._build_retain_item(result, file_item=file_item, sheet_name=sheet_name)
-            assert item["content"]
-            assert "local:doc1:" in item["document_id"]
+        # Step 1: excel_structured 处理
+        result = ExcelStructuredStep().process(bundle)
+        assert len(result.files) == 2
+        assert all(f.role == "main" for f in result.files)
+        assert all(f.content_type == "text/markdown" for f in result.files)
+        assert result.context["extension"] == "md"
+
+        # Step 2: convert step 应跳过（已是 md）
+        convert = ConvertStep(extension_rules={".xlsx": "markitdown"})
+        assert convert.needs_conversion(result) is False
+        after_convert = convert.process(result)
+        assert after_convert.files == result.files  # 未改动
+
+        # Step 3: Hindsight destination 写入
+        dest = HindsightDestination(bank_id="test", api_url="http://localhost", api_key="k")
+        mock_client = MagicMock()
+        dest._client = mock_client
+        dest._get_client = lambda: mock_client
+
+        dest.write(after_convert)
+        assert mock_client.retain_batch.call_count == 2
+
+        # 验证 document_id: 每个 Sheet 独立，格式为 local:doc1:{文件名}
+        calls = mock_client.retain_batch.call_args_list
+        doc_ids = [c[1]["items"][0]["document_id"] for c in calls]
+        assert len(doc_ids) == 2
+        assert all(d.startswith("local:doc1:") for d in doc_ids)
+        assert all(d.endswith(".md") for d in doc_ids)
+        # 两个 Sheet 的 document_id 不同
+        assert doc_ids[0] != doc_ids[1]
+
+        # 验证内容正确
+        assert "张三" in calls[0][1]["items"][0]["content"]
+        assert "Alpha" in calls[1][1]["items"][0]["content"]

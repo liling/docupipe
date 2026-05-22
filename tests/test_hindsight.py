@@ -108,13 +108,12 @@ class TestHindsightExtraMetadata:
         assert item["metadata"]["title"] == "自定义标题"
 
 
-class TestHindsightProcessRoles:
-    def test_default_process_roles_only_main(self):
+class TestHindsightMultiMainFiles:
+    def test_single_main_file_unchanged(self):
         from unittest.mock import MagicMock
 
         dest = _make_dest()
         bundle = _make_bundle()
-        bundle.files.append(FileItem(name="extra.md", content="extra content", content_type="text/markdown", role="attachment"))
 
         mock_client = MagicMock()
         dest._client = mock_client
@@ -122,15 +121,15 @@ class TestHindsightProcessRoles:
 
         dest.write(bundle)
         assert mock_client.retain_batch.call_count == 1
+        item = mock_client.retain_batch.call_args[1]["items"][0]
+        assert item["document_id"] == "dingtalk:doc1"
 
-    def test_process_roles_includes_attachment(self):
+    def test_multiple_main_files_each_get_retain(self):
         from unittest.mock import MagicMock
 
         dest = _make_dest()
-        dest._process_roles = ["main", "attachment"]
-
         bundle = _make_bundle()
-        bundle.files.append(FileItem(name="test_Sheet2.md", content="sheet2 data", content_type="text/markdown", role="attachment"))
+        bundle.files.append(FileItem(name="t_Sheet2.md", content="sheet2 data", content_type="text/markdown", role="main"))
 
         mock_client = MagicMock()
         dest._client = mock_client
@@ -140,31 +139,34 @@ class TestHindsightProcessRoles:
         assert mock_client.retain_batch.call_count == 2
         assert doc_id is not None
 
-    def test_process_roles_with_sheet_name_in_document_id(self):
-        dest = _make_dest(template="${context._source}:${context.id}:${context._sheet_name}")
-        config = {"document_id_template": "${context._source}:${context.id}:${context._sheet_name}"}
-        resolved = resolve_context_vars(config, {"_source": "dingtalk", "id": "doc1", "_sheet_name": "Sheet2"})
+    def test_multi_file_document_id_appends_filename(self):
+        dest = _make_dest()
+        bundle = _make_bundle()
+        bundle.files.append(FileItem(name="t_Sheet2.md", content="sheet2 data", content_type="text/markdown", role="main"))
+
+        item = dest._build_retain_item(bundle, file_item=bundle.files[0])
+        assert item["document_id"] == "dingtalk:doc1:t.md"
+        assert item["content"] == "hello"
+
+        item2 = dest._build_retain_item(bundle, file_item=bundle.files[1])
+        assert item2["document_id"] == "dingtalk:doc1:t_Sheet2.md"
+        assert item2["content"] == "sheet2 data"
+
+    def test_multi_file_with_template_appends_filename(self):
+        dest = _make_dest(template="${context.space_name}/${context.id}")
+        config = {"document_id_template": "${context.space_name}/${context.id}"}
+        resolved = resolve_context_vars(config, {"space_name": "myspace", "id": "doc1"})
         dest.update_config(resolved)
 
         bundle = _make_bundle()
-        bundle.files.append(FileItem(name="test_Sheet2.md", content="sheet2 data", content_type="text/markdown", role="attachment"))
+        bundle.files.append(FileItem(name="t_Sheet2.md", content="sheet2 data", content_type="text/markdown", role="main"))
 
-        item = dest._build_retain_item(bundle, file_item=bundle.files[1], sheet_name="Sheet2")
-        assert item["document_id"] == "dingtalk:doc1:Sheet2"
-        assert item["content"] == "sheet2 data"
-
-    def test_build_retain_item_with_file_item_uses_its_content(self):
-        dest = _make_dest()
-        bundle = _make_bundle()
-        extra_file = FileItem(name="test_Sheet2.md", content="sheet2 content", content_type="text/markdown", role="attachment")
-        bundle.files.append(extra_file)
-
-        item = dest._build_retain_item(bundle, file_item=extra_file, sheet_name="Sheet2")
-        assert item["content"] == "sheet2 content"
+        item = dest._build_retain_item(bundle, file_item=bundle.files[1])
+        assert item["document_id"] == "myspace/doc1:t_Sheet2.md"
 
     def test_build_retain_item_without_file_item_backward_compatible(self):
         dest = _make_dest()
         bundle = _make_bundle()
         item = dest._build_retain_item(bundle)
         assert item["content"] == "hello"
-        assert "_sheet_name" not in item["metadata"]
+        assert item["document_id"] == "dingtalk:doc1"
