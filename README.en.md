@@ -107,9 +107,9 @@ python -m docupipe run [OPTIONS]
 Options:
   --config PATH                 Configuration file path (default: docupipe.yaml)
   --pipeline NAME               Specify pipeline name
-  --resume                      Full mode resume from checkpoint
   --mode MODE                   Run mode (full/incremental/mirror)
-  --change-detection STRATEGY   Change detection strategy (mtime/hash)
+  --resume                      Full mode resume from checkpoint
+  --change-detection STRATEGY   Change detection strategy (mtime/hash, mirror mode only)
   --dry-run                     Print only, don't execute
   --state-dir PATH              State file directory (default: ./.state)
   --log-level LEVEL             Log level (DEBUG/INFO/WARNING/ERROR)
@@ -272,8 +272,9 @@ pipelines:
 
 ### Source
 
-- `dingtalk`: DingTalk Knowledge Base
+- `dingtalk`: DingTalk Knowledge Base (wiki/doc dual mode)
 - `localdrive`: Local file system
+- `tencent`: Tencent Docs (MCP protocol)
 
 ### Destination
 
@@ -282,13 +283,17 @@ pipelines:
 
 ### Step
 
-- `convert`: Document format conversion
-- `image_description`: Image description generation
+- `convert`: Document format conversion (via Converter)
+- `image_description`: AI-powered image description
+- `excel_structured`: Excel → structured Markdown tables
+- `resolve_attachments`: Resolve local file references in Markdown
+- `s3_upload`: Upload attachments to S3-compatible storage
+- `tencent_delete`: Delete processed Tencent docs (use in finalize_steps)
 
 ### Converter
 
 - `markitdown`: Common office documents
-- `mineru`: High-quality PDF conversion
+- `mineru`: High-quality PDF conversion (with OCR)
 
 ## State Management
 
@@ -299,20 +304,23 @@ docupipe maintains state files (`{source}_{dest}_state.json`) for each source-de
 
 ### Run Modes
 
-- **Default mode (full)**: Process all documents
-- **--resume**: Skip already processed documents, continue from pending
-- **incremental**: Only process newly added documents
+- **full**: Call `source.list()` for all documents, process each one
+- **full + --resume**: Skip list(), continue from pending state
+- **incremental**: List all, only process newly added documents
 - **mirror**: Detect changes (mtime/hash) + remove deleted documents
 
 ## Architecture
 
 ```
-source.list_documents() → [DocumentMeta]
-  → filter (resume skips processed / sync only syncs changes)
-    → source.fetch(meta) → Document
+source.list() → [BundleMeta]
+  → filter (resume skips done / incremental only new / mirror detects changes)
+    → source.fetch(meta) → Bundle
       → steps process sequentially (convert → image_description → ...)
-        → dest.write(doc)
+        → dest.write(bundle)
           → state.mark_done()
+            → post_steps (optional, e.g. delete source)
+After all documents:
+  → finalize_steps (batch post-processing, e.g. Tencent doc cleanup)
 ```
 
 ## Development
@@ -335,23 +343,26 @@ All components use decorators for registration. Adding a new component requires 
 2. **Add the decorator**: `@register_source("name")`
 3. **Import in __init__.py**
 
-Example:
+Example (Source):
 
 ```python
 # sources/custom.py
-from docupipe.sources.base import BaseSource
+from docupipe.models import Bundle, BundleMeta
 from docupipe.sources import register_source
+from docupipe.sources.base import SourceBase
 
 @register_source("custom")
-class CustomSource(BaseSource):
-    def list_documents(self):
-        # Implement document list logic
-        pass
+class CustomSource(SourceBase):
+    def list(self) -> list[BundleMeta]:
+        # Return document metadata list
+        ...
 
-    def fetch(self, meta):
-        # Implement document fetch logic
-        pass
+    def fetch(self, meta: BundleMeta) -> Bundle:
+        # Fetch document content by meta
+        ...
 ```
+
+See [Add New Component](docs/howto-add-component.md) for details.
 
 ## Documentation
 

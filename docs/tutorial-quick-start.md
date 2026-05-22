@@ -115,6 +115,6 @@ python -m docupipe run --pipeline wiki-to-hs --mode incremental
 
 ## 下一步
 
-- [配置系统参考](reference-configuration.html) — 完整的配置选项
-- [如何添加新组件](howto-add-component.html) — 扩展 pipeline 能力
-- [运行模式设计](explanation-modes.html) — 理解不同模式的适用场景
+- [配置系统参考](reference-configuration.md) — 完整的配置选项
+- [如何添加新组件](howto-add-component.md) — 扩展 pipeline 能力
+- [运行模式设计](explanation-modes.md) — 理解不同模式的适用场景

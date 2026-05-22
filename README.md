@@ -107,8 +107,9 @@ python -m docupipe run [OPTIONS]
 选项：
   --config PATH              配置文件路径（默认：docupipe.yaml）
   --pipeline NAME            指定 pipeline 名称
-  --resume                   跳过已处理的文档
-  --sync                     仅同步有变化的文档
+  --mode MODE                运行模式（full/incremental/mirror）
+  --resume                   full 模式断点续传
+  --change-detection STRATEGY  变更检测策略（mtime/hash，仅 mirror 模式）
   --dry-run                  只打印不执行
   --state-dir PATH           状态文件目录（默认：./.state）
   --log-level LEVEL          日志级别（DEBUG/INFO/WARNING/ERROR）
@@ -297,8 +298,9 @@ flowchart LR
 
 ### Source（数据源）
 
-- `dingtalk`：钉钉知识库
+- `dingtalk`：钉钉知识库（wiki/doc 双模式）
 - `localdrive`：本地文件系统
+- `tencent`：腾讯文档（MCP 协议）
 
 ### Destination（目标）
 
@@ -307,13 +309,17 @@ flowchart LR
 
 ### Step（处理步骤）
 
-- `convert`：文档格式转换
-- `image_description`：图片描述生成
+- `convert`：文档格式转换（调用 Converter）
+- `image_description`：AI 图片描述
+- `excel_structured`：Excel → 结构化 Markdown 表格
+- `resolve_attachments`：解析 Markdown 中引用的本地文件
+- `s3_upload`：上传附件到 S3 兼容存储
+- `tencent_delete`：删除已处理的腾讯文档（放 finalize_steps）
 
 ### Converter（转换器）
 
 - `markitdown`：支持常见办公文档
-- `mineru`：高质量 PDF 转换
+- `mineru`：高质量 PDF 转换（支持 OCR）
 
 ## 状态管理
 
@@ -324,19 +330,23 @@ docupipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state
 
 ### 运行模式
 
-- **默认模式**：处理所有文档
-- **--resume**：跳过已处理的文档
-- **--sync**：仅同步有变化的文档，删除源中已移除的文档
+- **full**：调用 `source.list()` 获取全部文档，逐个处理
+- **full + --resume**：不调 list()，从状态文件找 pending 继续处理
+- **incremental**：全量列举，只处理新增文档
+- **mirror**：检测变更（mtime/hash） + 清理已删除的文档
 
 ## 架构
 
 ```
-source.list_documents() → [DocumentMeta]
-  → 过滤（resume 跳过已处理 / sync 仅同步变更）
-    → source.fetch(meta) → Document
+source.list() → [BundleMeta]
+  → 过滤（resume 跳过已处理 / incremental 仅新增 / mirror 检测变更）
+    → source.fetch(meta) → Bundle
       → steps 依次处理（convert → image_description → ...）
-        → dest.write(doc)
+        → dest.write(bundle)
           → state.mark_done()
+            → post_steps（可选，如删除源头）
+全部文档完成后：
+  → finalize_steps（批量后处理，如腾讯文档删除）
 ```
 
 ## 开发
@@ -359,23 +369,26 @@ python -m pytest tests/test_pipeline.py -v
 2. **添加装饰器**：`@register_source("name")`
 3. **在 __init__.py 中 import**
 
-示例：
+示例（Source）：
 
 ```python
 # sources/custom.py
-from docupipe.sources.base import BaseSource
+from docupipe.models import Bundle, BundleMeta
 from docupipe.sources import register_source
+from docupipe.sources.base import SourceBase
 
 @register_source("custom")
-class CustomSource(BaseSource):
-    def list_documents(self):
-        # 实现文档列表逻辑
-        pass
+class CustomSource(SourceBase):
+    def list(self) -> list[BundleMeta]:
+        # 返回文档元数据列表
+        ...
 
-    def fetch(self, meta):
-        # 实现文档获取逻辑
-        pass
+    def fetch(self, meta: BundleMeta) -> Bundle:
+        # 根据 meta 获取文档内容
+        ...
 ```
+
+详细文档参见 [如何添加新组件](docs/howto-add-component.md)。
 
 ## 文档
 
