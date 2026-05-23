@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from docupipe.models import Bundle, FileItem
 from docupipe.destinations.hindsight import HindsightDestination
-from docupipe.config import resolve_context_vars
 
 
 def _make_dest(template=None, context_template=None, context_prefix=None, extra_tags=None, extra_metadata=None):
@@ -36,12 +35,9 @@ class TestHindsightDocumentIdTemplate:
         assert item["document_id"] == "dingtalk:doc1"
 
     def test_template_document_id(self):
-        dest = _make_dest(template="${context.space_name}/${context.id}")
-        config = {"document_id_template": "${context.space_name}/${context.id}"}
-        resolved = resolve_context_vars(config, {"space_name": "myspace", "id": "doc1"})
-        dest.update_config(resolved)
+        dest = _make_dest(template="{{ space_name }}/{{ id }}")
         item = dest._build_retain_item(_make_bundle())
-        assert item["document_id"] == "myspace/doc1"
+        assert item["document_id"] == "space1/doc1"
 
 
 class TestHindsightContextTemplate:
@@ -56,12 +52,9 @@ class TestHindsightContextTemplate:
         assert item["context"] == "产品知识库"
 
     def test_context_template_overrides_prefix(self):
-        dest = _make_dest(context_template="来自${context.space_name}", context_prefix="产品知识库")
-        config = {"context_template": "来自${context.space_name}"}
-        resolved = resolve_context_vars(config, {"space_name": "myspace"})
-        dest.update_config(resolved)
+        dest = _make_dest(context_template="来自{{ space_name }}", context_prefix="产品知识库")
         item = dest._build_retain_item(_make_bundle())
-        assert item["context"] == "来自myspace"
+        assert item["context"] == "来自space1"
 
 
 class TestHindsightExtraTags:
@@ -72,13 +65,10 @@ class TestHindsightExtraTags:
         assert "path:folder" in item["tags"]
 
     def test_extra_tags_appended(self):
-        dest = _make_dest()
-        config = {"extra_tags": ["custom:${context.space_name}", "env:prod"]}
-        resolved = resolve_context_vars(config, {"space_name": "myspace"})
-        dest.update_config(resolved)
+        dest = _make_dest(extra_tags=["custom:{{ space_name }}", "env:prod"])
         item = dest._build_retain_item(_make_bundle())
         assert "space:space1" in item["tags"]
-        assert "custom:myspace" in item["tags"]
+        assert "custom:space1" in item["tags"]
         assert "env:prod" in item["tags"]
 
 
@@ -90,20 +80,14 @@ class TestHindsightExtraMetadata:
         assert "author" not in item["metadata"]
 
     def test_extra_metadata_merged(self):
-        dest = _make_dest()
-        config = {"extra_metadata": {"author": "${context.author:-unknown}", "version": "1.0"}}
-        resolved = resolve_context_vars(config, {"author": "张三"})
-        dest.update_config(resolved)
-        item = dest._build_retain_item(_make_bundle())
+        dest = _make_dest(extra_metadata={"author": "{{ author | default('unknown') }}", "version": "1.0"})
+        item = dest._build_retain_item(_make_bundle(author="张三"))
         assert item["metadata"]["title"] == "测试"
         assert item["metadata"]["author"] == "张三"
         assert item["metadata"]["version"] == "1.0"
 
     def test_extra_metadata_overwrites_existing(self):
-        dest = _make_dest()
-        config = {"extra_metadata": {"title": "自定义标题"}}
-        resolved = resolve_context_vars(config, {})
-        dest.update_config(resolved)
+        dest = _make_dest(extra_metadata={"title": "自定义标题"})
         item = dest._build_retain_item(_make_bundle())
         assert item["metadata"]["title"] == "自定义标题"
 
@@ -153,16 +137,11 @@ class TestHindsightMultiMainFiles:
         assert item2["content"] == "sheet2 data"
 
     def test_multi_file_with_template_appends_filename(self):
-        dest = _make_dest(template="${context.space_name}/${context.id}")
-        config = {"document_id_template": "${context.space_name}/${context.id}"}
-        resolved = resolve_context_vars(config, {"space_name": "myspace", "id": "doc1"})
-        dest.update_config(resolved)
-
+        dest = _make_dest(template="{{ space_name }}/{{ id }}")
         bundle = _make_bundle()
         bundle.files.append(FileItem(name="t_Sheet2.md", content="sheet2 data", content_type="text/markdown", role="main"))
-
         item = dest._build_retain_item(bundle, file_item=bundle.files[1])
-        assert item["document_id"] == "myspace/doc1:t_Sheet2.md"
+        assert item["document_id"] == "space1/doc1:t_Sheet2.md"
 
     def test_build_retain_item_without_file_item_backward_compatible(self):
         dest = _make_dest()
