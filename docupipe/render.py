@@ -6,6 +6,7 @@ from typing import Any
 
 from jinja2 import BaseLoader, StrictUndefined
 from jinja2.sandbox import SandboxedEnvironment
+from jinja2.exceptions import UndefinedError as Jinja2UndefinedError
 
 
 def _date_format(value: Any, fmt: str = "%Y-%m-%d") -> str:
@@ -43,7 +44,12 @@ def render_template(value: Any, context: dict) -> Any:
     """使用 Jinja2 渲染模板字符串。对 dict/list 递归处理。"""
     if isinstance(value, str):
         tpl = _env.from_string(value)
-        return tpl.render(**context)
+        try:
+            return tpl.render(**context)
+        except Jinja2UndefinedError as e:
+            raise ValueError(
+                f"模板渲染错误，配置中引用了不存在的字段: {e}"
+            ) from e
     if isinstance(value, dict):
         return {k: render_template(v, context) for k, v in value.items()}
     if isinstance(value, list):

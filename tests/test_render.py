@@ -20,7 +20,7 @@ class TestSimpleVariable:
 
 class TestStrictUndefined:
     def test_missing_variable_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="模板渲染错误"):
             render_template("{{ missing }}", {})
 
     def test_default_filter(self):
