@@ -68,7 +68,7 @@ destination:
     output_dir: ./output
     replace_extension: false   # 是否替换路径原扩展名
     save_sidecar: true         # 是否保存 JSON 元数据
-    path_template: "${context.space_name}/${context.path}"  # 自定义路径模板
+    path_template: "{{ context.space_name }}/{{ context.path }}"  # 自定义路径模板（支持 Jinja2 语法）
 
 # Hindsight Memory
 destination:
@@ -76,8 +76,8 @@ destination:
     bank_id: ${HINDSIGHT_BANK_ID}
     api_url: ${HINDSIGHT_API_URL}
     context_prefix: "知识库"             # 可选 context 前缀
-    # document_id_template: "custom:${context.id}"   # 自定义文档 ID
-    # context_template: "文档：${context.title}"     # 自定义 context（优先级高于 context_prefix）
+    # document_id_template: "custom:{{ context.id }}"   # 自定义文档 ID（支持 Jinja2 语法）
+    # context_template: "文档：{{ context.title }}"     # 自定义 context（Jinja2 语法，优先级高于 context_prefix）
     # extra_tags: ["生产", "已审核"]                 # 附加标签
     # extra_metadata: {"source": "docupipe"}         # 附加元数据
 ```
@@ -171,6 +171,9 @@ pipelines:
       hindsight:
         context_prefix: ${context}
 ```
+
+Variables 脚本生成的变量在配置中以 `${VAR}` 引用，优先级高于环境变量。
+Destination 配置中的 Context 模板渲染使用 Jinja2 `{{ field }}` 语法（见第 3 步中的示例）。
 
 ## Verification
 

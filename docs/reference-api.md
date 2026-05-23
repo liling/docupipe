@@ -16,7 +16,6 @@ pipeline = Pipeline(
     steps=None,          # list[Step] — 处理步骤
     post_steps=None,     # list[Step] — 写入后执行步骤
     finalize_steps=None, # list[Step] — 全部完成后的批量步骤
-    dest_config=None,    # dict — destination 原始配置（含 ${context.field} 模板）
     state_file=None,     # str — 自定义状态文件名
     mode="full",         # str — "full"|"incremental"|"mirror"
     change_detection=None,# str — "mtime"|"hash"
@@ -120,6 +119,7 @@ FileItem(
     content="hello",            # str | bytes — 文件内容
     content_type="text/markdown", # str — MIME 类型（可选）
     role="main",                # str — "main" | "image" | "attachment"
+    context={},                 # dict — per-file 变量，合并到 Bundle.context 用于模板渲染
 )
 ```
 

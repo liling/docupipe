@@ -56,7 +56,7 @@ python -m docupipe destinations
 单文档处理流程：
   source.fetch(meta) → Bundle
     → steps 依次处理（convert → image_description → ...）
-      → dest.write(bundle)        ← 写入前会用 resolve_context_vars 解析 dest_config
+      → dest.write(bundle)        ← 写入前会用 render_template 解析 dest 配置中的 Jinja2 模板
         → state.mark_done()
           → post_steps（可选，如删除源头）
   全部文档处理完成后：
@@ -68,7 +68,8 @@ python -m docupipe destinations
 Source 和 Step 通过 `Bundle.context` 字典传递数据。`models.py` 顶部维护了字段注册表，新增字段必须先查阅该表。
 字段命名规则：通用字段用 `snake_case`，Source 特有字段用 `{source}_` 前缀（如 `dingtalk_content_type`、`tencent_doc_type`）。
 
-Destination 的配置支持 `${context.field}` 插值，Pipeline 在 write 前自动调用 `resolve_context_vars` 解析。
+Destination 的配置支持 `{{ field }}` Jinja2 模板语法，Pipeline 在 write 前自动调用 `render_template` 解析。
+内置过滤器：`date_format`、`basename`、`extension`。变量不存在时用 `| default('xxx')` 提供默认值。
 
 ## 配置系统
 
