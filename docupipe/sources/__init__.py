@@ -10,6 +10,12 @@ SOURCES: dict[str, type[SourceBase]] = {}
 
 def register_source(name: str):
     def decorator(cls: type[SourceBase]):
+        if name in SOURCES:
+            existing = SOURCES[name]
+            existing_source = getattr(existing, "_plugin_source", "built-in")
+            raise ValueError(
+                f"source '{name}' 已注册 (来源: {existing_source})"
+            )
         SOURCES[name] = cls
         cls.name = name
         return cls
@@ -26,3 +32,7 @@ def get_source(name: str) -> type[SourceBase]:
 import docupipe.sources.dingtalk  # noqa: F401, E402
 import docupipe.sources.localdrive  # noqa: F401, E402
 import docupipe.sources.tencent  # noqa: F401, E402
+
+for cls in SOURCES.values():
+    if not hasattr(cls, "_plugin_source"):
+        cls._plugin_source = "built-in"

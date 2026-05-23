@@ -23,6 +23,13 @@ def _setup_logging(level: str):
     )
 
 
+def _source_label(cls) -> str:
+    source = getattr(cls, "_plugin_source", None)
+    if source and source != "built-in":
+        return f"(plugin: {source})"
+    return "(built-in)"
+
+
 @click.group()
 @click.option("--state-dir", default="./.state", help="状态文件目录")
 @click.option("--log-level", default="INFO", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]),
@@ -63,12 +70,25 @@ def run(ctx, config_path, pipeline_name, mode, resume, change_detection, dry_run
 @main.command("sources")
 def list_sources():
     """列出可用的 Source"""
-    for name in SOURCES:
-        click.echo(f"  {name}")
+    for name, cls in SOURCES.items():
+        click.echo(f"  {name} {_source_label(cls)}")
 
 
 @main.command("destinations")
 def list_destinations():
     """列出可用的 Destination"""
-    for name in DESTINATIONS:
-        click.echo(f"  {name}")
+    for name, cls in DESTINATIONS.items():
+        click.echo(f"  {name} {_source_label(cls)}")
+
+
+@main.command("plugins")
+@click.pass_context
+def list_plugins(ctx):
+    """列出已加载的插件及其组件"""
+    from docupipe.plugins import _PLUGIN_REGISTRY
+    if not _PLUGIN_REGISTRY:
+        click.echo("没有加载任何插件")
+        return
+    for key, components in sorted(_PLUGIN_REGISTRY.items()):
+        parts = [f"{t}:{n}" for t, n in components]
+        click.echo(f"  {key}: {', '.join(parts)}")

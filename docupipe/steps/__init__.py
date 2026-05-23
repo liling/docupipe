@@ -10,6 +10,12 @@ STEPS: dict[str, type[Step]] = {}
 
 def register_step(name: str):
     def decorator(cls: type[Step]):
+        if name in STEPS:
+            existing = STEPS[name]
+            existing_source = getattr(existing, "_plugin_source", "built-in")
+            raise ValueError(
+                f"step '{name}' 已注册 (来源: {existing_source})"
+            )
         STEPS[name] = cls
         cls.name = name
         return cls
@@ -29,3 +35,7 @@ import docupipe.steps.s3_upload  # noqa: F401, E402
 import docupipe.steps.resolve_attachments  # noqa: F401, E402
 import docupipe.steps.tencent_delete  # noqa: F401, E402
 import docupipe.steps.excel_structured  # noqa: F401, E402
+
+for cls in STEPS.values():
+    if not hasattr(cls, "_plugin_source"):
+        cls._plugin_source = "built-in"
