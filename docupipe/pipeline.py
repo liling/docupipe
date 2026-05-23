@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from docupipe.config import resolve_context_vars
 from docupipe.destinations.base import DestinationBase
 from docupipe.display import Display
 from docupipe.models import Bundle, BundleMeta, SkipBundle
@@ -24,7 +23,6 @@ class Pipeline:
         steps: list | None = None,
         post_steps: list | None = None,
         finalize_steps: list | None = None,
-        dest_config: dict | None = None,
         state_file: str | None = None,
         mode: str = "full",
         change_detection: str | None = None,
@@ -42,7 +40,6 @@ class Pipeline:
         self._steps = steps
         self._post_steps = post_steps or []
         self._finalize_steps = finalize_steps or []
-        self._dest_config = dest_config
         self._mode = mode
         self._change_detection = change_detection
         self._mirror_delete = mirror_delete
@@ -209,9 +206,6 @@ class Pipeline:
             if dry_run:
                 self._display.result("info", f"[dry-run] {_display_path}")
             else:
-                if self._dest_config:
-                    resolved = resolve_context_vars(self._dest_config, bundle.context)
-                    self.dest.update_config(resolved)
                 self.dest.write(bundle)
                 self._display.result("success", _display_path)
 

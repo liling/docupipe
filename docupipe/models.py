@@ -26,6 +26,7 @@ from pathlib import PurePosixPath
 #   space_name      | str  | 知识库/空间名称      | 钉钉/腾讯写入 | Destination 读取
 #   absolute_path   | str  | 本地文件绝对路径      | LocalDrive 写入 | ResolveAttachmentsStep 读取
 #   image_metadata  | dict | 图片描述 AI 处理结果  | ImageDescriptionStep 写入
+#   mtime           | int  | 通用修改时间戳（毫秒）| Dingtalk/LocalDrive 写入 | Pipeline/Hindsight 读取
 #
 # Source 特有字段：
 #   dingtalk_content_type | str | 钉钉文档类型枚举（ALIDOC/DOCUMENT 等）| DingtalkSource 写入
@@ -48,6 +49,7 @@ class FileItem:
     content: str | bytes
     content_type: str = ""
     role: str = "main"
+    context: dict = field(default_factory=dict)
 
 
 @dataclass

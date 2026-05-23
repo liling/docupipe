@@ -117,6 +117,7 @@ python -m docupipe run [OPTIONS]
 # 列出可用组件
 python -m docupipe sources       # 列出所有 Source
 python -m docupipe destinations  # 列出所有 Destination
+python -m docupipe plugins       # 列出所有已加载的插件
 ```
 
 ## 配置说明
@@ -321,6 +322,17 @@ flowchart LR
 - `markitdown`：支持常见办公文档
 - `mineru`：高质量 PDF 转换（支持 OCR）
 
+## 插件系统
+
+docupipe 支持通过插件扩展组件，无需修改核心代码。插件通过两阶段加载：
+
+- **阶段 1（import 时）**：自动扫描已安装包的 `docupipe.plugins` entry_points
+- **阶段 2（运行时）**：加载 YAML 中 `plugin_dirs` 指定的目录和 `~/.docupipe/plugins/`
+
+同名组件注册时抛出 `ValueError`，显示冲突来源。CLI 中使用 `python -m docupipe plugins` 查看已加载的插件。
+
+详细文档参见 [插件系统参考](docs/reference-plugins.md)。
+
 ## 状态管理
 
 docupipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state.json`），记录：
@@ -361,13 +373,13 @@ python -m pytest tests/ -v
 python -m pytest tests/test_pipeline.py -v
 ```
 
-### 添加新组件
+### 添加内置组件
 
-所有组件使用装饰器注册，添加新组件只需三步：
+所有组件使用装饰器注册，添加内置组件只需三步：
 
 1. **实现抽象基类**
 2. **添加装饰器**：`@register_source("name")`
-3. **在 __init__.py 中 import**
+3. **在 `__init__.py` 中 import**
 
 示例（Source）：
 
@@ -380,13 +392,14 @@ from docupipe.sources.base import SourceBase
 @register_source("custom")
 class CustomSource(SourceBase):
     def list(self) -> list[BundleMeta]:
-        # 返回文档元数据列表
         ...
-
     def fetch(self, meta: BundleMeta) -> Bundle:
-        # 根据 meta 获取文档内容
         ...
 ```
+
+### 添加外部插件
+
+外部插件使用相同的装饰器，但无需修改核心代码。参见上方「插件系统」章节。
 
 详细文档参见 [如何添加新组件](docs/howto-add-component.md)。
 

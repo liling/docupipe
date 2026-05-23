@@ -10,6 +10,12 @@ DESTINATIONS: dict[str, type[DestinationBase]] = {}
 
 def register_destination(name: str):
     def decorator(cls: type[DestinationBase]):
+        if name in DESTINATIONS:
+            existing = DESTINATIONS[name]
+            existing_source = getattr(existing, "_plugin_source", "built-in")
+            raise ValueError(
+                f"destination '{name}' 已注册 (来源: {existing_source})"
+            )
         DESTINATIONS[name] = cls
         cls.name = name
         return cls
@@ -25,3 +31,7 @@ def get_destination(name: str) -> type[DestinationBase]:
 # 自动注册内置 destination
 import docupipe.destinations.hindsight  # noqa: F401, E402
 import docupipe.destinations.localdrive  # noqa: F401, E402
+
+for cls in DESTINATIONS.values():
+    if not hasattr(cls, "_plugin_source"):
+        cls._plugin_source = "built-in"

@@ -6,6 +6,7 @@ from pathlib import Path
 from docupipe.destinations import register_destination
 from docupipe.destinations.base import DestinationBase
 from docupipe.models import Bundle
+from docupipe.render import render_template
 from docupipe.utils import mime_type_to_extension
 
 
@@ -83,8 +84,15 @@ class LocalDriveDestination(DestinationBase):
 
     def _resolve_path(self, bundle: Bundle) -> Path:
         """从 Bundle context 解析输出路径"""
-        context = bundle.context
-        rel_path = self._path_template or context["path"]
+        context = dict(bundle.context)
+        main_file = bundle.main
+        if main_file and main_file.context:
+            context.update(main_file.context)
+
+        if self._path_template:
+            rel_path = render_template(self._path_template, context)
+        else:
+            rel_path = context["path"]
 
         ext = ""
         ctx_ext = context.get("extension")

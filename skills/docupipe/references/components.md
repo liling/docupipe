@@ -155,7 +155,7 @@ destination:
 - context: `"文档：{title}，来自 {space_name}/{folder_path}"`
 - tags: `["space:{space_name}", "path:folder1", "path:folder2", ...]`
 
-模板支持 `${context.field}` 插值。
+模板支持 Jinja2 `{{ context.field }}` 语法（或简写为 `{{ field }}`），支持条件判断和内置过滤器（`date_format`、`basename`、`extension`）。
 
 注意：`remove()` 操作不支持（会抛出 NotImplementedError）。
 

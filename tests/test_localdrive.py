@@ -285,14 +285,11 @@ class TestLocalDrivePathTemplate:
         assert path == tmp_path / "doc.md"
         assert "我的空间" not in str(path)
 
-    def test_path_template_with_context_filename_via_update_config(self, tmp_path):
-        dest = LocalDriveDestination(output_dir=str(tmp_path), path_template="${context.filename}")
+    def test_path_template_with_context_variable(self, tmp_path):
+        dest = LocalDriveDestination(output_dir=str(tmp_path), path_template="{{ filename }}")
         bundle = Bundle(
             files=[FileItem(name="t.md", content="hello", content_type="text/markdown", role="main")],
             context={"id": "1", "title": "t", "path": "folder/doc", "filename": "doc", "extension": "md"},
         )
-        from docupipe.config import resolve_context_vars
-        resolved = resolve_context_vars({"path_template": dest._path_template}, bundle.context)
-        dest.update_config(resolved)
         path = dest._resolve_path(bundle)
         assert path == tmp_path / "doc.md"

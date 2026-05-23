@@ -128,16 +128,19 @@ s3_upload:
   roles: [string]        # 上传的文件角色，默认 ["image"]
 ```
 
-## Destination 的 Context 插值
+## Destination 的 Context 模板渲染
 
-Destination 配置值支持 `${context.field}` 语法，Pipeline 在 write 前自动解析：
+Destination 配置值支持 Jinja2 模板语法，Pipeline 在 write 前自动渲染：
 
 ```yaml
 destination:
   hindsight:
-    document_id_template: "${context._source}:${context.id}"
-    context_template: "文档：${context.title}，来自 ${context.space_name}"
+    document_id_template: "{{ context._source }}:{{ context.id }}"
+    context_template: "文档：{{ context.title }}，来自 {{ context.space_name }}"
 ```
+
+支持 `{{ field }}` 变量替换、`{% if %}...{% endif %}` 条件判断、`| default('fallback')` 默认值。
+内置过滤器：`date_format`、`basename`、`extension`。
 
 ## 配置模板
 

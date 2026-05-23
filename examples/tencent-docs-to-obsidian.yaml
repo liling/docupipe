@@ -43,7 +43,7 @@ pipelines:
     destination:
       localdrive:
         output_dir: output/obsidian-vault/公众号文章/${year}/${month}
-        path_template: ${context.filename}
+        path_template: "{{ filename }}"
         replace_extension: true
         save_sidecar: false
     steps:

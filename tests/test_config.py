@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from docupipe.config import (
-    resolve_env_vars, resolve_context_vars,
+    resolve_env_vars,
     execute_variables_script, deep_merge, parse_component_config,
 )
 
@@ -66,62 +66,6 @@ class TestEnvInterpolation:
         monkeypatch.setenv("KEY", "val")
         assert resolve_env_vars("${KEY}") == "val"
         assert resolve_env_vars("${MISSING}") == "${MISSING}"
-
-
-class TestContextInterpolation:
-    def test_simple_field(self):
-        result = resolve_context_vars("hello ${context.name}", {"name": "world"})
-        assert result == "hello world"
-
-    def test_field_with_slash(self):
-        result = resolve_context_vars("/path/${context.space_name}/file", {"space_name": "我的空间"})
-        assert result == "/path/我的空间/file"
-
-    def test_multiple_fields(self):
-        result = resolve_context_vars("${context.a}/${context.b}", {"a": "x", "b": "y"})
-        assert result == "x/y"
-
-    def test_missing_field_keeps_original(self):
-        result = resolve_context_vars("${context.missing}", {})
-        assert result == "${context.missing}"
-
-    def test_missing_field_with_default(self):
-        result = resolve_context_vars("${context.missing:-fallback}", {})
-        assert result == "fallback"
-
-    def test_existing_field_overrides_default(self):
-        result = resolve_context_vars("${context.name:-default}", {"name": "actual"})
-        assert result == "actual"
-
-    def test_none_value_keeps_original(self):
-        result = resolve_context_vars("${context.val}", {"val": None})
-        assert result == "${context.val}"
-
-    def test_value_converted_to_string(self):
-        result = resolve_context_vars("${context.num}", {"num": 42})
-        assert result == "42"
-
-    def test_dict_recursive(self):
-        config = {"key": "${context.name}", "nested": {"k2": "${context.name}/path"}}
-        result = resolve_context_vars(config, {"name": "hello"})
-        assert result == {"key": "hello", "nested": {"k2": "hello/path"}}
-
-    def test_list_recursive(self):
-        result = resolve_context_vars(["${context.a}", "plain"], {"a": "val"})
-        assert result == ["val", "plain"]
-
-    def test_non_string_unchanged(self):
-        assert resolve_context_vars(42, {}) == 42
-        assert resolve_context_vars(True, {}) is True
-        assert resolve_context_vars(None, {}) is None
-
-    def test_no_context_template_unchanged(self):
-        assert resolve_context_vars("plain text", {}) == "plain text"
-        assert resolve_context_vars("${ENV_VAR}", {}) == "${ENV_VAR}"
-
-    def test_env_var_not_touched(self):
-        result = resolve_context_vars("${MY_VAR} ${context.name}", {"name": "x"})
-        assert result == "${MY_VAR} x"
 
 
 class TestExecuteVariablesScript:

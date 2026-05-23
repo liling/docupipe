@@ -43,8 +43,8 @@ Hindsight Memory 目的地全局默认值：
 | `api_key` | string | `${HINDSIGHT_API_KEY}` | API 密钥 |
 | `bank_id` | string | `${HINDSIGHT_BANK_ID}` | 记忆库 ID |
 | `context_prefix` | string | null | context 字符串前缀 |
-| `document_id_template` | string | null | 自定义 document_id 模板 |
-| `context_template` | string | null | 自定义 context 字符串（优先级高于 context_prefix） |
+| `document_id_template` | string | null | 自定义 document_id 模板（支持 Jinja2 语法，如 `{{ context._source }}:{{ context.id }}`） |
+| `context_template` | string | null | 自定义 context 字符串（支持 Jinja2 语法，优先级高于 context_prefix） |
 | `extra_tags` | list[string] | null | 附加标签列表 |
 | `extra_metadata` | object | null | 附加元数据字典 |
 
@@ -108,7 +108,9 @@ destination:
     context_prefix: "知识库"
 ```
 
-Destination 配置支持 `${context.field}` 模板变量，在写入前由 `resolve_context_vars` 自动替换为 Bundle context 中的值。
+Destination 配置支持 Jinja2 模板语法，在写入前由 `render_template` 自动替换为 Bundle context 中的值。
+支持 `{{ field }}`、`{% if %}...{% endif %}` 条件判断、Jinja2 内置过滤器（如 `| default('xxx')`）。
+内置过滤器：`date_format`、`basename`、`extension`。
 
 ### Steps 配置
 
@@ -161,14 +163,25 @@ variables:
 
 ## Context 模板变量
 
-Destination 配置支持引用 Bundle context 字段，在 pipeline 运行时自动替换：
+Destination 配置支持引用 Bundle context 字段，在 pipeline 运行时通过 Jinja2 引擎自动渲染：
 
 ```yaml
 destination:
   localdrive:
     output_dir: ./output
-    path_template: "${context.space_name}/${context.path}"
+    path_template: "{{ context.space_name }}/{{ context.path }}"
+
+  hindsight:
+    document_id_template: "{{ context._source }}:{{ context.id }}"
+    context_template: "文档：{{ context.title }}，来自 {{ context.space_name }}"
 ```
+
+支持完整的 Jinja2 模板语法：
+- 变量替换：`{{ context.field }}` 或 `{{ field }}`（无 context 前缀也可直接使用字段名）
+- 条件判断：`{% if condition %}...{% endif %}`
+- 默认值：`{{ field | default('fallback') }}`
+- 内置过滤器：`date_format`、`basename`、`extension`
+- 环境变量语法 `${VAR}` 保持不变，不会被 Jinja2 引擎处理
 
 内置 context 字段由 Pipeline 注入：
 
@@ -209,4 +222,4 @@ CLI 启动时配置的解析顺序：
 4. 分离全局配置和 pipelines
 5. 对每个 pipeline，通过 `parse_component_config` 解析 source/destination 配置（deep merge 全局值）
 6. 构建 Pipeline 时传入 resolved config
-7. 写入前调用 `resolve_context_vars` 替换 `${context.field}`
+7. 写入前调用 `render_template` 渲染 Destination 配置中的 Jinja2 模板

@@ -132,7 +132,7 @@ class DestinationBase(ABC):
         raise NotImplementedError
 
     def update_config(self, config: dict) -> None:
-        """用已解析的配置更新组件属性（去除 ${context.field} 模板后）"""
+        """用已解析的配置更新组件属性。只更新 _config_keys 中声明的字段。"""
 ```
 
 ### localdrive
@@ -146,7 +146,7 @@ class DestinationBase(ABC):
 | `output_dir` | str | 必填 | 输出目录 |
 | `replace_extension` | bool | false | 是否替换路径扩展名（追加 .md 等） |
 | `save_sidecar` | bool | true | 是否保存 JSON 元数据 sidecar 文件 |
-| `path_template` | str | null | 自定义输出路径模板 |
+| `path_template` | str | null | 自定义输出路径模板（支持 Jinja2 语法，如 `{{ context.space_name }}/{{ context.path }}`） |
 
 **行为：**
 - 输出路径由 `path_template` 或 `context.path` 决定，结合 content_type 自动追加/替换扩展名
@@ -167,8 +167,8 @@ class DestinationBase(ABC):
 | `api_url` | str | `${HINDSIGHT_API_URL}` | 服务地址 |
 | `api_key` | str | `${HINDSIGHT_API_KEY}` | API 密钥 |
 | `context_prefix` | str | null | context 字符串前缀 |
-| `document_id_template` | str | null | 自定义 document_id 模板字符串 |
-| `context_template` | str | null | 自定义 context 字符串模板（优先级高于 context_prefix） |
+| `document_id_template` | str | null | 自定义 document_id 模板（支持 Jinja2 语法，如 `{{ context._source }}:{{ context.id }}`） |
+| `context_template` | str | null | 自定义 context 字符串模板（支持 Jinja2 语法，优先级高于 context_prefix） |
 | `extra_tags` | list[str] | null | 附加标签列表，追加到自动生成的 space:/path: 标签之后 |
 | `extra_metadata` | dict | null | 附加元数据字典，合并到 metadata 对象中 |
 
@@ -176,7 +176,7 @@ class DestinationBase(ABC):
 - 使用 hindsight_client SDK，通过 `retain_batch(..., retain_async=True)` 异步写入
 - `document_id` 默认格式：`{source}:{id}`（如 `dingtalk:node123`）；设置 `document_id_template` 可自定义
 - 路径自动拆分为 `space:` 和 `path:` 标签
-- context 字符串优先级：`context_template` > `context_prefix` > 标题+路径自动构建
+- context 字符串优先级：`context_template`（Jinja2 渲染） > `context_prefix` > 标题+路径自动构建
 - `extra_tags` 追加到自动生成的标签列表末尾；`extra_metadata` 合并到 `metadata` 对象中
 - 时间戳优先使用 `mtime`（context 中的通用修改时间戳，毫秒），否则使用当前时间
 - 不支持 `remove()`

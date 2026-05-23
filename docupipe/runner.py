@@ -9,6 +9,7 @@ from docupipe.config import deep_merge, execute_variables_script, parse_componen
 from docupipe.destinations import get_destination
 from docupipe.display import Display
 from docupipe.pipeline import Pipeline
+from docupipe.plugins import load_config_plugins
 from docupipe.sources import get_source
 from docupipe.steps import get_step
 
@@ -29,6 +30,9 @@ def run_pipeline_from_config(
     config = resolve_env_vars(raw, variables)
 
     global_config = {k: v for k, v in config.items() if k not in ("pipelines", "variables")}
+    plugin_dirs = global_config.pop("plugin_dirs", [])
+    if plugin_dirs:
+        load_config_plugins(plugin_dirs)
     converters_config = global_config.pop("converters", global_config.pop("type_rules", {}))
     extension_rules = converters_config.get("extensions", {})
 
@@ -81,7 +85,6 @@ def run_pipeline_from_config(
                 steps=steps,
                 post_steps=post_steps,
                 finalize_steps=finalize_steps,
-                dest_config=dest_kwargs,
                 state_file=pipe_config.get("state_file"),
                 mode=effective_mode,
                 change_detection=effective_cd,
