@@ -137,6 +137,27 @@ pipelines:
       - custom_step_name
 ```
 
+## 作为外部插件发布
+
+以上步骤在 docupipe 核心仓库中添加内置组件。如需在不修改核心代码的情况下添加组件，可通过插件系统：
+
+1. **创建 `.py` 文件或包**，放在任意目录
+2. **使用相同的装饰器**注册组件（`@register_source` 等）
+3. **在 YAML 配置中指定 `plugin_dirs`**
+
+示例结构：
+
+```
+my-project/
+├── plugins/
+│   ├── custom_source.py      # 注册 source
+│   └── custom_step/
+│       └── __init__.py       # 注册 step
+└── docupipe.yaml             # 引用 plugins/ 目录
+```
+
+详见[插件系统参考](reference-plugins.md)。
+
 ## Troubleshooting
 
 **组件未出现在列表中**：确认 `__init__.py` 中有 import 语句，且 import 没有报错。

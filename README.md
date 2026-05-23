@@ -324,76 +324,14 @@ flowchart LR
 
 ## 插件系统
 
-docupipe 支持通过插件扩展 Source、Destination、Step、Converter 四类组件，无需修改核心代码。
+docupipe 支持通过插件扩展组件，无需修改核心代码。插件通过两阶段加载：
 
-### 加载方式
+- **阶段 1（import 时）**：自动扫描已安装包的 `docupipe.plugins` entry_points
+- **阶段 2（运行时）**：加载 YAML 中 `plugin_dirs` 指定的目录和 `~/.docupipe/plugins/`
 
-插件通过两阶段加载：
+同名组件注册时抛出 `ValueError`，显示冲突来源。CLI 中使用 `python -m docupipe plugins` 查看已加载的插件。
 
-- **阶段 1（import 时）**：自动扫描已安装包的 `docupipe.plugins` entry_points，通过 `pip install` 安装的插件在此阶段生效
-- **阶段 2（运行时）**：加载 YAML 配置中 `plugin_dirs` 指定的目录和约定目录 `~/.docupipe/plugins/`，支持 `.py` 文件或包含 `__init__.py` 的包
-
-### 配置方式
-
-在 YAML 配置的顶层添加 `plugin_dirs`：
-
-```yaml
-plugin_dirs:
-  - ./my-plugins           # 相对于 CWD 的目录
-  - ~/team-plugins         # 用户目录下的目录
-
-pipelines:
-  - name: with-plugins
-    source:
-      custom_source: {}    # 插件注册的 source
-    ...
-```
-
-### 编写插件
-
-插件 `.py` 文件使用标准装饰器注册组件：
-
-```python
-# my-plugins/custom_source.py
-from docupipe.models import Bundle, BundleMeta
-from docupipe.sources import register_source
-from docupipe.sources.base import SourceBase
-
-@register_source("custom_source")
-class CustomSource(SourceBase):
-    def list(self) -> list[BundleMeta]:
-        ...
-    def fetch(self, meta: BundleMeta) -> Bundle:
-        ...
-```
-
-支持 `.py` 文件和包含 `__init__.py` 的包两种形式。以 `_` 开头的文件被自动跳过。
-
-### 发布为 pip 包
-
-在插件的 `pyproject.toml` 中注册 entry_point：
-
-```toml
-[project.entry-points."docupipe.plugins"]
-my_plugin = "my_plugin:register"
-```
-
-`register` 函数内部调用 `register_source`/`register_destination`/`register_step`/`register_converter` 注册组件。
-
-### 冲突检测
-
-同名组件注册时抛出 `ValueError`，错误信息显示冲突双方的来源（如 `built-in` 与 `file:/path/to/plugin.py`），便于定位。
-
-### CLI 查看
-
-```bash
-# 查看所有已加载的插件及其注册的组件
-python -m docupipe plugins
-
-# 查看组件时显示来源（built-in 或 plugin）
-python -m docupipe sources
-python -m docupipe destinations
-```
+详细文档参见 [插件系统参考](docs/reference-plugins.md)。
 
 ## 状态管理
 
