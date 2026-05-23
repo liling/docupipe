@@ -117,6 +117,7 @@ python -m docupipe run [OPTIONS]
 # 列出可用组件
 python -m docupipe sources       # 列出所有 Source
 python -m docupipe destinations  # 列出所有 Destination
+python -m docupipe plugins       # 列出所有已加载的插件
 ```
 
 ## 配置说明
@@ -321,6 +322,79 @@ flowchart LR
 - `markitdown`：支持常见办公文档
 - `mineru`：高质量 PDF 转换（支持 OCR）
 
+## 插件系统
+
+docupipe 支持通过插件扩展 Source、Destination、Step、Converter 四类组件，无需修改核心代码。
+
+### 加载方式
+
+插件通过两阶段加载：
+
+- **阶段 1（import 时）**：自动扫描已安装包的 `docupipe.plugins` entry_points，通过 `pip install` 安装的插件在此阶段生效
+- **阶段 2（运行时）**：加载 YAML 配置中 `plugin_dirs` 指定的目录和约定目录 `~/.docupipe/plugins/`，支持 `.py` 文件或包含 `__init__.py` 的包
+
+### 配置方式
+
+在 YAML 配置的顶层添加 `plugin_dirs`：
+
+```yaml
+plugin_dirs:
+  - ./my-plugins           # 相对于 CWD 的目录
+  - ~/team-plugins         # 用户目录下的目录
+
+pipelines:
+  - name: with-plugins
+    source:
+      custom_source: {}    # 插件注册的 source
+    ...
+```
+
+### 编写插件
+
+插件 `.py` 文件使用标准装饰器注册组件：
+
+```python
+# my-plugins/custom_source.py
+from docupipe.models import Bundle, BundleMeta
+from docupipe.sources import register_source
+from docupipe.sources.base import SourceBase
+
+@register_source("custom_source")
+class CustomSource(SourceBase):
+    def list(self) -> list[BundleMeta]:
+        ...
+    def fetch(self, meta: BundleMeta) -> Bundle:
+        ...
+```
+
+支持 `.py` 文件和包含 `__init__.py` 的包两种形式。以 `_` 开头的文件被自动跳过。
+
+### 发布为 pip 包
+
+在插件的 `pyproject.toml` 中注册 entry_point：
+
+```toml
+[project.entry-points."docupipe.plugins"]
+my_plugin = "my_plugin:register"
+```
+
+`register` 函数内部调用 `register_source`/`register_destination`/`register_step`/`register_converter` 注册组件。
+
+### 冲突检测
+
+同名组件注册时抛出 `ValueError`，错误信息显示冲突双方的来源（如 `built-in` 与 `file:/path/to/plugin.py`），便于定位。
+
+### CLI 查看
+
+```bash
+# 查看所有已加载的插件及其注册的组件
+python -m docupipe plugins
+
+# 查看组件时显示来源（built-in 或 plugin）
+python -m docupipe sources
+python -m docupipe destinations
+```
+
 ## 状态管理
 
 docupipe 为每个 source-dest 组合维护状态文件（`{source}_{dest}_state.json`），记录：
@@ -361,13 +435,13 @@ python -m pytest tests/ -v
 python -m pytest tests/test_pipeline.py -v
 ```
 
-### 添加新组件
+### 添加内置组件
 
-所有组件使用装饰器注册，添加新组件只需三步：
+所有组件使用装饰器注册，添加内置组件只需三步：
 
 1. **实现抽象基类**
 2. **添加装饰器**：`@register_source("name")`
-3. **在 __init__.py 中 import**
+3. **在 `__init__.py` 中 import**
 
 示例（Source）：
 
@@ -380,13 +454,14 @@ from docupipe.sources.base import SourceBase
 @register_source("custom")
 class CustomSource(SourceBase):
     def list(self) -> list[BundleMeta]:
-        # 返回文档元数据列表
         ...
-
     def fetch(self, meta: BundleMeta) -> Bundle:
-        # 根据 meta 获取文档内容
         ...
 ```
+
+### 添加外部插件
+
+外部插件使用相同的装饰器，但无需修改核心代码。参见上方「插件系统」章节。
 
 详细文档参见 [如何添加新组件](docs/howto-add-component.md)。
 
