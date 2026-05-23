@@ -81,7 +81,7 @@ class NotionSource(SourceBase):
 
 ### 修改文件
 
-- `docupipe/__init__.py`：在导入子模块前调用 `_load_plugins()`
+- `docupipe/__init__.py`：在导入子模块后调用 `_load_plugins()`
 - `docupipe/sources/__init__.py`、`destinations/__init__.py`、`steps/__init__.py`、`converters/__init__.py`：`register_xxx` 装饰器增加冲突检测
 - `docupipe/cli.py`：扩展 `sources`/`destinations` 命令显示来源，新增 `plugins` 命令
 - `docupipe/config.py`：解析 `plugin_dirs` 配置字段
@@ -111,14 +111,25 @@ def register_source(name: str):
 
 ### 加载时机
 
-在 `docupipe/__init__.py` 中，先调用 `_load_plugins()`，再 import 各子模块：
+分两个阶段：
+
+**阶段 1（import 时）：** `docupipe/__init__.py` 中，先 import 子模块（注册内置组件），再加载约定目录和 entry_points 插件：
 
 ```python
 # docupipe/__init__.py
-from docupipe.plugins import _load_plugins
-_load_plugins()
-
 from docupipe import sources, destinations, steps, converters  # noqa: E402, F401
+
+from docupipe.plugins import load_plugins
+load_plugins()
+```
+
+**阶段 2（运行时）：** `cli.py` 解析 YAML 配置后，调用 `load_config_plugins(plugin_dirs)` 加载配置目录中的插件：
+
+```python
+# docupipe/cli.py
+config = load_config(config_path)
+plugin_dirs = config.get("plugin_dirs", [])
+load_config_plugins(plugin_dirs)
 ```
 
 ### 插件加载器核心逻辑
@@ -133,26 +144,34 @@ from pathlib import Path
 
 logger = logging.getLogger("docupipe.plugins")
 
-PLUGIN_DIRS = [
+CONVENTION_DIRS = [
     Path.home() / ".docupipe" / "plugins",
 ]
 
-def _load_plugins():
-    """发现并加载所有插件。"""
+def load_plugins():
+    """阶段 1：加载约定目录和 entry_points 插件。在 import 时调用。"""
     loaded = []
 
     # 1. 约定目录
-    for plugin_dir in PLUGIN_DIRS:
+    for plugin_dir in CONVENTION_DIRS:
         if plugin_dir.is_dir():
             loaded.extend(_load_from_directory(plugin_dir))
 
     # 2. entry_points
     loaded.extend(_load_from_entry_points())
 
-    # 打印加载结果
-    if loaded:
-        for name, count in loaded:
-            logger.info(f"Loaded plugin: {name} ({count} components)")
+    for name, count in loaded:
+        logger.info(f"Loaded plugin: {name} ({count} components)")
+
+
+def load_config_plugins(plugin_dirs: list[str]):
+    """阶段 2：加载配置文件指定的插件目录。在运行时调用。"""
+    for dir_path in plugin_dirs:
+        plugin_dir = Path(dir_path).expanduser().resolve()
+        if plugin_dir.is_dir():
+            loaded = _load_from_directory(plugin_dir)
+            for name, count in loaded:
+                logger.info(f"Loaded plugin: {name} ({count} components)")
 
 
 def _load_from_directory(plugin_dir: Path) -> list[tuple[str, int]]:
@@ -175,12 +194,15 @@ def _load_from_entry_points() -> list[tuple[str, int]]:
     results = []
     eps = importlib.metadata.entry_points(group="docupipe.plugins")
     for ep in eps:
-        load_fn = ep.load()
-        before = _count_registered()
-        load_fn()
-        after = _count_registered()
-        count = after - before
-        results.append((ep.name, count))
+        try:
+            load_fn = ep.load()
+            before = _count_registered()
+            load_fn()
+            after = _count_registered()
+            count = after - before
+            results.append((ep.name, count))
+        except Exception as e:
+            logger.error(f"Failed to load plugin '{ep.name}': {e}")
     return results
 
 
