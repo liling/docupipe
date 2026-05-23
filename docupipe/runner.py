@@ -81,7 +81,6 @@ def run_pipeline_from_config(
                 steps=steps,
                 post_steps=post_steps,
                 finalize_steps=finalize_steps,
-                dest_config=dest_kwargs,
                 state_file=pipe_config.get("state_file"),
                 mode=effective_mode,
                 change_detection=effective_cd,

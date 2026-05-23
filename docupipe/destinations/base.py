@@ -19,7 +19,7 @@ class DestinationBase(ABC):
         raise NotImplementedError(f"{self.name} 不支持删除操作")
 
     def update_config(self, config: dict) -> None:
-        """用已解析的配置更新组件属性。只更新 _config_keys 中声明的字段。"""
+        """更新组件配置属性。只更新 _config_keys 中声明的字段。"""
         for key in self._config_keys:
             if key in config:
                 setattr(self, f"_{key}", config[key])

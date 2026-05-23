@@ -7,6 +7,7 @@ from pathlib import Path
 from docupipe.destinations import register_destination
 from docupipe.destinations.base import DestinationBase
 from docupipe.models import Bundle, FileItem
+from docupipe.render import render_template
 
 
 @register_destination("hindsight")
@@ -69,40 +70,42 @@ class HindsightDestination(DestinationBase):
             self._client = None
 
     def _build_retain_item(self, bundle: Bundle, *, file_item: FileItem | None = None) -> dict:
-        bundle_context = dict(bundle.context)
-
         target_file = file_item or bundle.main
         if not target_file:
             raise ValueError("Bundle must have a main file")
 
+        context = dict(bundle.context)
+        if target_file.context:
+            context.update(target_file.context)
+
         content = target_file.content if isinstance(target_file.content, str) else target_file.content.decode("utf-8")
 
         # 从 path 构建标签
-        space_name = bundle_context.get("space_name", "")
-        path_parts = Path(bundle_context["path"]).parts
+        space_name = context.get("space_name", "")
+        path_parts = Path(context["path"]).parts
         path_tags = [f"path:{part}" for part in path_parts[1:]] if len(path_parts) > 1 else []
         tags = ([f"space:{space_name}"] if space_name else []) + path_tags
 
         # 追加额外标签
         if self._extra_tags:
-            tags.extend(self._extra_tags)
+            tags.extend(render_template(self._extra_tags, context))
 
         # context
         if self._context_template:
-            context_str = self._context_template
+            context_str = render_template(self._context_template, context)
         elif self._context_prefix:
             context_str = self._context_prefix
         else:
             folder_display = "/".join(path_parts[1:]) if len(path_parts) > 1 else ""
             if folder_display:
-                context_str = f"文档：{bundle_context['title']}，来自 {space_name}/{folder_display}"
+                context_str = f"文档：{context['title']}，来自 {space_name}/{folder_display}"
             elif space_name:
-                context_str = f"文档：{bundle_context['title']}，来自 {space_name}"
+                context_str = f"文档：{context['title']}，来自 {space_name}"
             else:
-                context_str = f"文档：{bundle_context['title']}"
+                context_str = f"文档：{context['title']}"
 
         # timestamp
-        update_time = bundle_context.get("mtime")
+        update_time = context.get("mtime")
         if update_time:
             tz = timezone(timedelta(hours=8))
             dt = datetime.fromtimestamp(update_time / 1000, tz=tz)
@@ -112,10 +115,10 @@ class HindsightDestination(DestinationBase):
 
         # document_id
         if self._document_id_template:
-            document_id = self._document_id_template
+            document_id = render_template(self._document_id_template, context)
         else:
-            source_name = bundle_context.get("_source", "local")
-            document_id = f"{source_name}:{bundle_context['id']}"
+            source_name = context.get("_source", "local")
+            document_id = f"{source_name}:{context['id']}"
         if file_item is not None:
             document_id = f"{document_id}:{file_item.name}"
 
@@ -126,16 +129,16 @@ class HindsightDestination(DestinationBase):
             "context": context_str,
             "tags": tags,
             "metadata": {
-                **{k: str(v) if not isinstance(v, str) else v for k, v in bundle_context.items()},
-                "content_type": bundle_context.get("dingtalk_content_type", ""),
-                "relative_path": bundle_context["path"],
-                "full_path": f"{bundle_context.get('space_name', '')}/{bundle_context['path']}" if bundle_context.get("space_name") else bundle_context["path"],
-                "content_hash": bundle_context["hash"],
+                **{k: str(v) if not isinstance(v, str) else v for k, v in context.items()},
+                "content_type": context.get("dingtalk_content_type", ""),
+                "relative_path": context["path"],
+                "full_path": f"{context.get('space_name', '')}/{context['path']}" if context.get("space_name") else context["path"],
+                "content_hash": context["hash"],
                 "update_time": str(update_time) if update_time else "",
             },
         }
 
         if self._extra_metadata:
-            item["metadata"].update(self._extra_metadata)
+            item["metadata"].update(render_template(self._extra_metadata, context))
 
         return item
